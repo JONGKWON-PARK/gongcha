@@ -1135,6 +1135,20 @@ function dist(a,b,c,d){const t=Math.PI/180,x=(c-a)*t,y=(d-b)*t;
 function nearest(la,lo){let b=null,bd=1e9;
  for(const g of G){const x=dist(la,lo,g.la,g.lo);if(x<bd){bd=x;b=g;}}return{g:b,km:bd};}
 
+// ── 서울 밖(격자 없는 지역) 자동 지점 생성 ──
+// 서울 등록 지점에서 12km를 벗어나면, 현재 GPS 좌표를 약 500m 격자로
+// 반올림해 가상 지점을 만든다. 통계(w/p/f/v/c)는 없이 좌표·이름만 갖고,
+// 운행하면서 obs(실측 학습)로 데이터를 쌓는다. 서울 안에서는 쓰이지 않는다.
+const OFF_STEP=0.0045;            // 위도 약 0.5km 격자
+function offGrid(la,lo){
+ const gla=Math.round(la/OFF_STEP)*OFF_STEP;
+ const glo=Math.round(lo/OFF_STEP)*OFF_STEP;
+ const nm='현위치 '+gla.toFixed(3)+','+glo.toFixed(3);
+ return {n:nm, g:'현위치', la:gla, lo:glo, off:true,
+   w:null, p:null, f:null, v:null, c:null};
+}
+function isOff(g){return g&&g.off;}
+
 let lastFix=null, odoSaveT=0;
 function locate(){
  if(!navigator.geolocation){fallback();return;}
@@ -1152,7 +1166,9 @@ function locate(){
   if(np.acc<=50) lastFix=np;
   pos={la:np.la,lo:np.lo};
   const n=nearest(pos.la,pos.lo);
-  cur=n.km>12?null:n.g; render();},()=>fallback(),
+  // 서울 지점 12km 이내면 그 지점, 아니면 현재 위치 기반 가상 지점
+  cur = n.km>8 ? offGrid(pos.la,pos.lo) : n.g;
+  render();},()=>fallback(),
   {enableHighAccuracy:true,maximumAge:5000,timeout:12000});}
 function fallback(){cur=cur||G.find(g=>g.g==='송파구')||G[0];pos={la:cur.la,lo:cur.lo};render();}
 
@@ -1201,6 +1217,42 @@ function render(){
  if(!valid(h)){vd.className='verdict na';vt.textContent='';vc.textContent='심야 데이터 없음';
   vw.innerHTML='00~04시는 통계 추정 신뢰도가 낮아 표시하지 않습니다. 아래 베테랑 지점을 참고하세요.';
   document.getElementById('recs').innerHTML='';renderVet(anchor,nowH,25);stats();return;}
+
+ // ── 서울 밖(공개통계 없는 지역): 실측 학습 기반 표시 ──
+ if(isOff(anchor)){
+  const st=obsStat(anchor.g,anchor.n,h);   // 이 격자·시간대의 내 실측
+  document.getElementById('hd').textContent='현위치';
+  document.getElementById('hg').textContent=(anchor.gu||'등록 지점 밖')+' · 내 데이터 수집 중';
+  const hw=document.getElementById('hw');
+  hw.textContent=st?st.mean.toFixed(0)+'분':'-';
+  hw.style.color=st?(st.mean<=12?'var(--occ)':st.mean<=25?'var(--amber)':'var(--vac)'):'var(--dim)';
+  document.getElementById('hc').textContent='-';
+  document.getElementById('hp').textContent='-';
+  document.getElementById('hf').textContent='-';
+  document.getElementById('hs').textContent='-';
+  vt.innerHTML='현재 위치 기준 <span class="live off">GPS</span>';
+  vd.className='verdict stay';
+  if(st&&st.n>=3){
+   vc.textContent='이 지역 내 평균 '+st.mean.toFixed(0)+'분';
+   vw.innerHTML=`운행 <b>${st.n}회</b> 실측 기준입니다. 계속 운행하면 정확도가 올라갑니다.`;
+  }else{
+   vc.textContent='이 지역 데이터를 모으는 중';
+   vw.innerHTML=`아직 공개통계가 없는 지역입니다.<br>탑승·하차를 기록하면 이 자리의 대기시간이 쌓입니다. (현재 ${st?st.n:0}/3회)`;
+  }
+  // 서울 밖에서도 근처에 쌓인 내 실측 지점이 있으면 대안으로 표시
+  const uni=unified(anchor,h,25); lastList=uni;
+  document.getElementById('recs').innerHTML = uni.length ? uni.map((x,n)=>`
+   <div class="pick t-${x.tier}">
+    <div class="idx mono">${x.tag||(n+1)}</div>
+    <div class="body"><div class="nm">${x.nm}<span style="font-size:11px;color:var(--dim);font-weight:400"> ${x.gu}</span></div>
+     <div class="meta mono">${x.km.toFixed(1)}km · 이동 ${x.move.toFixed(0)}분${x.live?'◉':''} + 대기 ${x.raw.toFixed(0)}분${x.learned?`<span style="color:var(--occ)">◇${x.obsN}</span>`:''}</div></div>
+    <div style="text-align:right;margin-right:2px"><div class="num mono">${x.total.toFixed(0)}</div><div class="unit">분</div></div>
+    <button class="go" data-i="${n}">길찾기</button>
+   </div>`).join('') : '<div class="pick"><div class="body"><div class="meta">이 지역은 아직 쌓인 기록이 없습니다. 운행을 기록해 주세요.</div></div></div>';
+  document.querySelectorAll('.go').forEach(b=>{const x=lastList[+b.dataset.i];
+   b.onclick=()=>openNav({n:x.nm,g:x.gu,la:x.la,lo:x.lo,w:null,p:null,f:x.f,vet:x.extra});});
+  stats();return;
+ }
 
  const i=idx(h),myWait=anchor.w[i],spd=anchor.v[i];
  document.getElementById('hd').textContent=anchor.n;
@@ -1592,6 +1644,22 @@ function unified(anchor,h,spd){
     raw:bl.v, obsN:bl.n, learned:bl.learned, cv:bl.cv, zb,
     wait:w, total:mv.m+w, f:ng.f, c:ng.c?ng.c[i]:null, p:ng.p[i]});
  };
+ // ── 서울 밖: 실측(obs)이 3회 이상 쌓인 가상 격자들을 후보로 ──
+ if(isOff(anchor)){
+  for(const key of Object.keys(obs)){
+   const [gu,nm,hh]=key.split('|'); if(gu!=='현위치'||+hh!==h) continue;
+   const st=obsStat(gu,nm,h); if(!st||st.n<3) continue;
+   const mm=nm.replace('현위치 ','').split(',');
+   const la=+mm[0], lo=+mm[1]; if(isNaN(la)||isNaN(lo)) continue;
+   const k=gu+'|'+nm; if(seen[k]) continue; seen[k]=1;
+   const km=dist(anchor.la,anchor.lo,la,lo); if(km>6) continue;
+   const mv=moveMin(anchor,{la,lo},25);
+   out.push({nm,gu,la,lo,tier:'grid',tag:'',extra:'내 실측',km,move:mv.m,live:mv.live,
+     raw:st.mean, obsN:st.n, learned:true, cv:st.cv, zb:1,
+     wait:st.mean, total:mv.m+st.mean, f:null, c:null, p:null});
+  }
+  return out.sort((a,b)=>a.total-b.total).slice(0,8);
+ }
  mySpots.filter(v=>v.h.includes(h)).forEach(v=>push(v.n,'내 지점',v.la,v.lo,'mine','◆',v.r+'시'));
  SPOT.forEach(v=>push(v.n,v.g,v.la,v.lo,v.w===3?'s3':'s2',v.w===3?'★★★':'★★',v.w===3?'강사 TOP10':'강사 추천'));
  VET.filter(v=>v.h.includes(h)).forEach(v=>push(v.n,v.g,v.la,v.lo,'vet','★',v.r+'시'));
@@ -2856,7 +2924,9 @@ tog.onclick=async()=>{
   const pv=trips.filter(x=>x.end).pop();
   if(pv&&pv.end&&pv.tla!=null){
    const gap=(Date.now()-pv.end)/60000;
-   const ng=nearGrid(pv.tla,pv.tlo);
+   // 서울 지점 12km 이내면 그 격자, 아니면 하차 좌표의 가상 격자에 기록
+   const near=nearest(pv.tla,pv.tlo);
+   const ng = near.km>8 ? offGrid(pv.tla,pv.tlo) : nearGrid(pv.tla,pv.tlo);
    const hh=new Date(pv.end).getHours();
    if(ng&&valid(hh)) obsAdd(ng.g,ng.n,hh,gap);
   }
