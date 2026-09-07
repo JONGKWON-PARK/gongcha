@@ -2038,15 +2038,18 @@ let expList=[], pickCat='fuel', pendingImg=null;
 const KEY_EXPL='gongcha:expenses';
 
 function drawCats(){
- document.getElementById('cats').innerHTML=CAT.map(c=>
+ const _c=document.getElementById('cats'); if(!_c) return;
+ _c.innerHTML=CAT.map(c=>
   `<button data-c="${c.k}" class="${c.k===pickCat?'on':''}">${c.n}</button>`).join('');
  document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{pickCat=b.dataset.c;drawCats();});}
 
 document.addEventListener('DOMContentLoaded',()=>{});
 function initTax(){
  drawCats();
- document.getElementById('ex_cam').onclick=()=>document.getElementById('ex_file').click();
- document.getElementById('ex_file').onchange=e=>{
+ const _cam=document.getElementById('ex_cam'), _file=document.getElementById('ex_file');
+ if(!_cam||!_file) return;
+ _cam.onclick=()=>_file.click();
+ _file.onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
   const img=new Image(), rd=new FileReader();
   rd.onload=()=>{img.onload=()=>{
@@ -3031,17 +3034,20 @@ document.getElementById('clr').onclick=async()=>{
  history=(await Store.get(KEY_HIST))||[];
  tripArchive=(await Store.get(KEY_ARCH))||[];
  expList=(await Store.get(KEY_EXPL))||[];
- initTax();
+ // 초기화 보호: 미완성/누락된 UI가 있어도 앱 전체가 멈추지 않도록 개별 처리
+ const safe=(fn,nm)=>{try{fn();}catch(e){console.warn('init 건너뜀:',nm,e.message);}};
+ safe(initTax,'initTax');
  books=(await Store.get(KEY_BOOK))||[];
  custs=(await Store.get(KEY_CUST))||{};
- initBook(); initCust(); initWake(); initRest(); initEdit(); initFuel();
- if(await Store.get(KEY_WAKE)){ wantWake=true; await wakeOn(); drawWake(); }
+ safe(initBook,'initBook'); safe(initCust,'initCust'); safe(initWake,'initWake');
+ safe(initRest,'initRest'); safe(initEdit,'initEdit'); safe(initFuel,'initFuel');
+ try{ if(await Store.get(KEY_WAKE)){ wantWake=true; await wakeOn(); drawWake(); } }catch(e){}
  const s=await Store.get(KEY);
  if(Array.isArray(s)&&s.length){trips=s;const l=trips[trips.length-1];
   if(l&&!l.end){occupied=true;tog.textContent='승객 하차';tog.classList.add('occ');
    hint.textContent='실차 · 목적지를 설정하면 미리 계산합니다';
    if(l.dest){let b=null;for(const g of G)if(g.n===l.dest&&(!b))b=g;dest=b;}}}
- buildZoneRate();
+ try{buildZoneRate();}catch(e){console.warn('buildZoneRate 건너뜀',e.message);}
  locate();render();setInterval(render,30000);
  setTimeout(weeklySuggest,4000);
  setTimeout(loadWx,3000); setInterval(loadWx,1800000);})();
