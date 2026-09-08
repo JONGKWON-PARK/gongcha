@@ -293,7 +293,16 @@ section{padding:15px 16px}
 .sheet{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.75);display:none;align-items:flex-end;justify-content:center}
 .sheet.on{display:flex}
 .sheet .card{background:var(--panel);border-top:1px solid var(--line);width:100%;max-width:520px;
- padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:82vh;display:flex;flex-direction:column}
+ padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:88vh;display:flex;flex-direction:column;
+ overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.savebar{position:sticky;bottom:0;background:var(--panel);padding-top:8px;margin-top:4px;
+ border-top:1px solid var(--line);z-index:2}
+.savebar #setmsg{font-size:11.5px;color:var(--faint);text-align:center;margin:2px 0 6px;min-height:14px}
+.savebar #setclose{border-color:var(--amber);color:var(--amber);text-align:center;font-weight:700;margin-bottom:0}
+/* 작은 화면(갤럭시 A40 등)에서 시트 내용이 잘리지 않도록 */
+@media (max-height:740px){ .sheet .card{max-height:92vh;padding-top:12px} }
+/* 시트 안 목록들이 자체 높이를 과하게 잡아 본문을 밀어내지 않게 */
+@media (max-height:740px){ .mylist{max-height:120px} .explist{max-height:160px} }
 .sheet .to{font-size:16px;font-weight:800;margin-bottom:3px}
 .sheet .sub2{font-size:11px;color:var(--dim);margin-bottom:13px}
 .sheet button.opt{width:100%;padding:14px;margin-bottom:8px;border:1px solid var(--line);background:transparent;
@@ -992,8 +1001,10 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 
   <label>내 지점 (<span id="mycnt">0</span>곳)</label>
   <div class="mylist" id="mylist"></div>
-  <div id="setmsg" style="font-size:11.5px;color:var(--faint);text-align:center;margin:6px 0 8px;min-height:15px"></div>
-  <button class="opt" id="setclose" style="border-color:var(--amber);color:var(--amber);text-align:center;font-weight:700">저장하고 닫기</button>
+  <div class="savebar">
+   <div id="setmsg"></div>
+   <button class="opt" id="setclose">저장하고 닫기</button>
+  </div>
 </div></div>
 
 <div class="sheet" id="fuel"><div class="card">
