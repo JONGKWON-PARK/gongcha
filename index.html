@@ -992,7 +992,8 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 
   <label>내 지점 (<span id="mycnt">0</span>곳)</label>
   <div class="mylist" id="mylist"></div>
-  <button class="opt x" id="setclose">닫기</button>
+  <div id="setmsg" style="font-size:11.5px;color:var(--faint);text-align:center;margin:6px 0 8px;min-height:15px"></div>
+  <button class="opt" id="setclose" style="border-color:var(--amber);color:var(--amber);text-align:center;font-weight:700">저장하고 닫기</button>
 </div></div>
 
 <div class="sheet" id="fuel"><div class="card">
@@ -2820,7 +2821,11 @@ document.getElementById('pre_m').onclick=()=>{
 document.getElementById('opset').onclick=()=>{
  document.getElementById('key').value=apiKey; fillCfg(); drawMy(); setSheet.classList.add('on');};
 document.getElementById('setclose').onclick=async()=>{
- apiKey=document.getElementById('key').value.trim();
+ const msg=document.getElementById('setmsg');
+ // 붙여넣기 사고 방지: 공백·줄바꿈·따옴표 제거
+ const raw=document.getElementById('key').value||'';
+ apiKey=raw.replace(/[\s"'`]/g,'');
+ document.getElementById('key').value=apiKey;
  const num=(el,d)=>{const v=parseFloat(el.value); return isNaN(v)?d:v;};
  CFG.st=num(g_st,4);
  CFG.s=[{h:num(g_h0,7),g:num(g_g0,150000)},
@@ -2828,11 +2833,24 @@ document.getElementById('setclose').onclick=async()=>{
         {h:num(g_h2,14),g:num(g_g2,400000)}];
  CFG.s.sort((a,b)=>a.h-b.h);
  CFG.quota=num(g_qt,0); CFG.bd=Math.max(0,Math.min(12,num(g_bd,6))); CFG.fuel=g_fuel.value;
- await Store.set(KEY_CFG,CFG);
- await Store.set(KEY_API,apiKey);
- setSheet.classList.remove('on');
- if(apiKey) autoEta(); else {liveOn=false; render();}};
-setSheet.onclick=e=>{if(e.target===setSheet)setSheet.classList.remove('on');};
+ try{
+  await Store.set(KEY_CFG,CFG);
+  await Store.set(KEY_API,apiKey);
+  const back=await Store.get(KEY_API);          // 실제 저장됐는지 재확인
+  if(back!==apiKey) throw new Error('저장 확인 실패');
+  msg.style.color='var(--occ)';
+  msg.textContent = apiKey ? 'appKey 저장됨 ('+apiKey.length+'자)' : '설정 저장됨 (키 없음 · 추정 모드)';
+  setTimeout(()=>{ setSheet.classList.remove('on'); msg.textContent=''; },700);
+  if(apiKey) autoEta(true); else {liveOn=false; render();}
+ }catch(e){
+  msg.style.color='var(--vac)';
+  msg.textContent='저장 실패: '+e.message+' — 시크릿 모드이거나 저장공간이 가득 찼는지 확인하세요';
+ }};
+setSheet.onclick=e=>{if(e.target===setSheet){
+ const m=document.getElementById('setmsg');
+ m.style.color='var(--amber)';
+ m.textContent='저장하려면 아래 「저장하고 닫기」를 눌러주세요';
+}};
 
 let lastEtaSig='', lastEtaAt=0;
 async function autoEta(force){
