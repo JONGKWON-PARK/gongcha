@@ -308,7 +308,7 @@ section{padding:15px 16px}
 /* 작은 화면(갤럭시 A40 등)에서 시트 내용이 잘리지 않도록 */
 @media (max-height:740px){ .sheet .card{max-height:92vh;padding-top:12px} }
 /* 시트 안 목록들이 자체 높이를 과하게 잡아 본문을 밀어내지 않게 */
-@media (max-height:740px){ .mylist{max-height:120px} .explist{max-height:160px} }
+@media (max-height:740px){ .mylist{max-height:120px} .explist{max-height:160px} .hist{max-height:200px} }
 .sheet .to{font-size:16px;font-weight:800;margin-bottom:3px}
 .sheet .sub2{font-size:11px;color:var(--dim);margin-bottom:13px}
 .sheet button.opt{width:100%;padding:14px;margin-bottom:8px;border:1px solid var(--line);background:transparent;
@@ -847,6 +847,109 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   <button data-tab="tax">정산·세금</button>
 </div>
 
+<div class="pane" id="pane-anal">
+  <section>
+    <div class="eyebrow"><span>기간</span><span id="anrange" style="letter-spacing:0"></span></div>
+    <div class="kpi" id="ankpi"></div>
+    <div class="kpi" id="kpi2" style="margin-top:8px"></div>
+    <div class="card"><h5>시간대별 매출 (건당 평균)</h5>
+      <div class="chart" id="chHour"></div><div class="xlab" id="lbHour"></div></div>
+    <div class="card"><h5>요일별 매출</h5>
+      <div class="chart" id="chDow"></div><div class="xlab" id="lbDow"></div></div>
+    <div class="card"><h5>시간대 슬롯</h5>
+      <div class="chart" id="chSlot"></div><div class="xlab" id="lbSlot"></div></div>
+    <div id="anline"></div>
+    <div class="card"><h5>승차 지역 실적</h5><div class="rank" id="rkFrom"></div></div>
+    <div class="card"><h5>하차 지역 실적</h5><div class="rank" id="toWrap"></div></div>
+    <div class="card"><h5>OD 경로 순위</h5><div class="rank" id="odWrap"></div></div>
+    <div class="card"><h5>방향별 비교 (서울 / 경기·인천)</h5><div class="rank" id="dirWrap"></div></div>
+    <div class="card"><h5>콜 시급 · 요금 구간별</h5><div class="rank" id="rateWrap"></div></div>
+    <div class="card"><h5>호출·결제·승객 분포</h5><div id="distWrap"></div></div>
+    <div class="card"><h5>근무 경과별 효율</h5><div id="elapseWrap"></div>
+      <div class="chart" id="chElapse"></div><div class="xlab" id="lbElapse"></div></div>
+    <div class="card"><h5>일자별 추이</h5><div id="tsWrap"></div></div>
+    <div class="card"><h5>주간 대비</h5><div id="wowWrap"></div></div>
+    <div class="card"><h5>연비 · 주유</h5><div id="fuelWrap"></div></div>
+    <div class="card"><h5>추천 적중률 · 예측 대기 vs 실제 공차</h5><div id="acc"></div></div>
+    <div class="card"><h5>피크 배수 분포</h5><div class="rank" id="rkPeak"></div></div>
+    <div id="anempty"></div>
+  </section>
+</div>
+
+<div class="pane" id="pane-book">
+  <section>
+    <div class="eyebrow"><span>예약 등록</span></div>
+    <textarea id="bk_raw" placeholder="고객 메시지를 붙여넣으세요&#10;&#10;카카오톡 · 문자 · 이메일 · WhatsApp 어디서든&#10;날짜·시간·출발·도착·인원을 자동으로 찾아냅니다"></textarea>
+    <div class="bkform" id="bk_form" hidden>
+      <div class="fr"><label>날짜</label><input id="bk_d" type="date"></div>
+      <div class="fr"><label>시각</label><input id="bk_t" type="time"></div>
+      <div class="fr"><label>출발</label><input id="bk_from" placeholder="출발지"></div>
+      <div class="fr"><label>도착</label><input id="bk_to" placeholder="도착지"></div>
+      <div class="fr"><label>고객</label><input id="bk_name" placeholder="이름"></div>
+      <div class="fr"><label>연락처</label><input id="bk_tel" placeholder="전화·WhatsApp"></div>
+      <div class="fr"><label>인원</label><input id="bk_pax" type="number" inputmode="numeric" placeholder="명"></div>
+      <div class="fr"><label>예상 요금</label><input id="bk_fare" type="number" inputmode="numeric" placeholder="원"></div>
+      <div class="fr"><label>소요(분)</label><input id="bk_dur" type="number" inputmode="numeric" placeholder="분"></div>
+      <div class="fr"><label>메모</label><input id="bk_memo" placeholder="메모 (선택)"></div>
+      <div class="tools" style="margin-top:8px">
+        <button id="bk_cancel">취소</button>
+        <button id="bk_save" style="border-color:var(--amber);color:var(--amber)">예약 저장</button>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="eyebrow"><span>예약 목록</span><span id="bk_cnt" style="letter-spacing:0"></span></div>
+    <div id="bk_list"></div>
+  </section>
+
+  <section style="padding-top:0" id="recall_sec" hidden>
+    <div class="eyebrow"><span>재예약 알림</span><span id="recall_cnt" style="letter-spacing:0"></span></div>
+    <div id="recall_list"></div>
+  </section>
+
+  <section style="padding-top:0" id="cust_sec" hidden>
+    <div class="eyebrow"><span>고객</span></div>
+    <div id="cust_list"></div>
+  </section>
+</div>
+
+<div class="pane" id="pane-tax">
+  <section>
+    <div class="eyebrow"><span>경비 등록</span></div>
+    <div class="cats" id="cats"></div>
+    <div style="display:flex;gap:6px;margin-bottom:9px">
+      <input id="ex_amt" type="number" inputmode="numeric" placeholder="금액"
+        style="flex:1;padding:12px;background:var(--panel);border:1px solid var(--line);color:var(--txt);font-family:inherit;font-size:15px">
+      <input id="ex_memo" placeholder="메모 (선택)"
+        style="flex:1.3;padding:12px;background:var(--panel);border:1px solid var(--line);color:var(--txt);font-family:inherit;font-size:14px">
+    </div>
+    <div style="display:flex;gap:6px">
+      <button id="ex_cam" class="opt" style="flex:1;margin:0;padding:12px;text-align:center">영수증 촬영</button>
+      <button id="ex_add" class="opt" style="flex:1;margin:0;padding:12px;text-align:center;border-color:var(--amber);color:var(--amber)">등록</button>
+    </div>
+    <input type="file" id="ex_file" accept="image/*" capture="environment" hidden>
+    <div class="rcpt" id="ex_pv"></div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="eyebrow"><span>경비 내역</span><span id="exrange" style="letter-spacing:0"></span></div>
+    <div class="explist" id="explist"></div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="eyebrow"><span>세금 리포트</span><span id="taxyear" style="letter-spacing:0"></span></div>
+    <div class="tax" id="taxbox"></div>
+    <div class="tools">
+      <button id="taxcsv">CSV 내보내기</button>
+      <button id="taxprt">리포트 인쇄</button>
+    </div>
+    <div class="note2">
+      종합소득세 추정치입니다. 실제 신고는 세무사와 확인하십시오. 기본공제 150만원만 반영했고
+      인적공제·연금·건강보험료 등은 제외했습니다. 간이과세 기준 8,000만원을 넘으면 일반과세 전환 대상입니다.
+    </div>
+  </section>
+</div>
 <div class="pane on" id="pane-drive">
 <div class="wx" id="wx" hidden></div>
 <div class="strip mono">
@@ -1299,7 +1402,7 @@ function render(){
  vt.innerHTML = (preview?'하차 전 미리 확인':'현재 위치 기준')+' <span class="live off" id="livebadge">'+(apiKey?(liveOn?'실시간':'추정'):'추정')+'</span>';
 
  if(myWait==null){vd.className='verdict move';vc.textContent=preview?'도착지에 수요가 없습니다':'이 자리는 수요가 없습니다';
-  vw.innerHTML=best?`내리면 바로 <b>${best.g.n}</b>으로 · ${best.km.toFixed(1)}km`:'반경 5km에 대안이 없습니다.';}
+  vw.innerHTML=best?`내리면 바로 <b>${best.nm}</b>(${best.gu})으로 · ${best.km.toFixed(1)}km`:'주변에 대안이 없습니다.';}
  else if(best&&best.total<myWait-3){
   vd.className='verdict move';vc.textContent=preview?'내리면 바로 이동하세요':'이동하세요';
   vw.innerHTML=`제자리 <b>${myWait.toFixed(0)}분</b> → <b>${best.tag} ${best.nm}</b><br>`+
@@ -2218,6 +2321,8 @@ function allTrips(){
  return out;
 }
 function bars(el,lab,vals,labels,fmtv){
+ const _e=document.getElementById(el), _l=document.getElementById(lab);
+ if(!_e||!_l) return;                    // 컨테이너가 없으면 건너뜀
  const mx=Math.max(...vals,1);
  document.getElementById(el).innerHTML=vals.map(v=>
   `<div class="${v===0?'dim':''}" style="height:${Math.max(2,v/mx*96)}px" title="${fmtv?fmtv(v):v}"></div>`).join('');
@@ -2560,10 +2665,13 @@ function renderAnal(){
 /* ─── 탭 ─── */
 document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{
  document.querySelectorAll('.tabbar button').forEach(x=>x.className=(x===b?'on':''));
- ['drive','anal','book','tax'].forEach(t=>document.getElementById('pane-'+t).className='pane'+(t===b.dataset.tab?' on':''));
- if(b.dataset.tab==='anal') renderAnal();
- if(b.dataset.tab==='book'){ renderBook(); }
- if(b.dataset.tab==='tax'){ renderExpList(); renderTax(); }
+ ['drive','anal','book','tax'].forEach(t=>{const el=document.getElementById('pane-'+t);
+  if(el) el.className='pane'+(t===b.dataset.tab?' on':'');});
+ const safe=(fn,nm)=>{try{ if(typeof fn==='function') fn(); }catch(e){ console.warn(nm,e.message); }};
+ if(b.dataset.tab==='anal') safe(typeof renderAnal!=='undefined'&&renderAnal,'renderAnal');
+ if(b.dataset.tab==='book') safe(typeof renderBook!=='undefined'&&renderBook,'renderBook');
+ if(b.dataset.tab==='tax'){ safe(typeof renderExpList!=='undefined'&&renderExpList,'renderExpList');
+                            safe(typeof renderTax!=='undefined'&&renderTax,'renderTax'); }
  window.scrollTo(0,0);});
 
 /* ─── 날씨 (Open-Meteo · 키 불요) ─── */
@@ -2996,7 +3104,7 @@ function stats(){
  const fare=done.reduce((s,t)=>s+(t.fare||0),0);
  let gaps=[];for(let i=1;i<trips.length;i++)if(trips[i-1].end)gaps.push((trips[i].start-trips[i-1].end)/60000);
  document.getElementById('s1').textContent=span.toFixed(1)+'h';
- document.getElementById('s1').title=`총 ${gross.toFixed(1)}h − 휴게 ${restTotal().toFixed(0)}분`;
+ try{ document.getElementById('s1').title=`총 ${span.toFixed(1)}h − 휴게 ${(typeof restTotal==='function'?restTotal():0).toFixed(0)}분`; }catch(e){}
  document.getElementById('s2').textContent=span>0?Math.round((1-paid/span)*100)+'%':'-';
  document.getElementById('s3').textContent=done.length;
  const dead=odo.total>0?(1-odo.paid/odo.total)*100:null;
