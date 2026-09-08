@@ -1167,7 +1167,7 @@ function locate(){
   pos={la:np.la,lo:np.lo};
   const n=nearest(pos.la,pos.lo);
   // 서울 지점 12km 이내면 그 지점, 아니면 현재 위치 기반 가상 지점
-  cur = n.km>8 ? offGrid(pos.la,pos.lo) : n.g;
+  cur = n.km>50 ? offGrid(pos.la,pos.lo) : n.g;
   render();},()=>fallback(),
   {enableHighAccuracy:true,maximumAge:5000,timeout:12000});}
 function fallback(){cur=cur||G.find(g=>g.g==='송파구')||G[0];pos={la:cur.la,lo:cur.lo};render();}
@@ -1303,11 +1303,13 @@ function render(){
 }
 
 /* ─── 실시간 소요시간 ─── */
-function ckey(a,b){return `${a.la.toFixed(3)},${a.lo.toFixed(3)}>${b.la.toFixed(3)},${b.lo.toFixed(3)}`;}
+const CG=0.0045;                      // 약 500m 격자
+const cgr=v=>(Math.round(v/CG)*CG).toFixed(4);
+function ckey(a,b){return `${cgr(a.la)},${cgr(a.lo)}>${cgr(b.la)},${cgr(b.lo)}`;}
 function estMin(km,spd){return km*DETOUR/(spd||25)*60;}          // 폴백: 거리 기반 추정
 function cachedEta(from,to){
  const c=etaCache[ckey(from,to)];
- return (c && Date.now()-c.t<600000) ? c.m : null;               // 10분 캐시
+ return (c && Date.now()-c.t<1500000) ? c.m : null;              // 25분 캐시
 }
 async function fetchEta(from,to){
  const k=ckey(from,to), c=cachedEta(from,to);
@@ -1350,21 +1352,33 @@ async function fetchMatrix(from,targets){
 async function refreshEta(targets,anchor){
  if(!apiKey||fetching||!anchor||!targets.length) return false;
  fetching=true; setLive('...');
- const need=targets.filter(t=>cachedEta(anchor,t)==null).slice(0,25);
+ const need=targets.filter(t=>cachedEta(anchor,t)==null).slice(0,10);
  if(!need.length){fetching=false;liveOn=true;setLive('실시간');return true;}
- try{                                    // 1) 매트릭스 시도
-  await fetchMatrix(anchor,need);
-  fetching=false; liveOn=true; setLive('실시간'); render(); return true;
- }catch(e){                              // 2) 폴백: 개별 경로안내
-  let ok=0;
-  for(const t of need.slice(0,8)){
-   try{ await fetchEta(anchor,t); ok++; }catch(x){ break; }
-  }
-  fetching=false;
-  if(ok){liveOn=true;setLive('실시간');render();return true;}
-  setLive('오류'); return false;
+ // 할당량 전략: 경로 매트릭스는 무료 20건/일뿐이라 하루 운행을 못 버틴다.
+ // 그래서 상위 후보 소수만 '자동차 경로안내'(1,000건/일)로 정확히 계산하고,
+ // 매트릭스는 하루 MATRIX_CAP회까지만 보조로 쓴다.
+ const TOP=Math.min(need.length,4);      // 실제 이동을 고민하는 건 상위 몇 곳뿐
+ let ok=0;
+ try{
+  for(const t of need.slice(0,TOP)){ await fetchEta(anchor,t); ok++; }
+ }catch(e){}
+ // 남은 후보가 많고 매트릭스 여유가 있으면 1회로 일괄 처리
+ const rest=need.slice(TOP);
+ if(rest.length>=5 && matrixLeft()>0){
+  try{ await fetchMatrix(anchor,rest); useMatrix(); ok+=rest.length; }catch(e){}
  }
+ fetching=false;
+ if(ok){liveOn=true;setLive('실시간');render();return true;}
+ setLive('오류'); return false;
 }
+// 매트릭스 일일 사용량 관리 (무료 20건/일, 안전하게 16건까지만)
+const MATRIX_CAP=16;
+function mxState(){ const t=new Date().toDateString();
+ let v=null; try{v=JSON.parse(localStorage.getItem('gc_mx')||'null');}catch(e){}
+ if(!v||v.d!==t) v={d:t,n:0}; return v; }
+function matrixLeft(){ return MATRIX_CAP-mxState().n; }
+function useMatrix(){ const v=mxState(); v.n++;
+ try{localStorage.setItem('gc_mx',JSON.stringify(v));}catch(e){} }
 
 // 역지오코딩: 좌표 → 실제 주소
 async function revGeo(la,lo){
@@ -1626,13 +1640,23 @@ function zoneBoost(nm){
 const TIER={mine:3.5, s3:3.0, s2:2.0, vet:1.3, grid:1.0};
 function nearGrid(la,lo){let b=null,bd=1e9;
  for(const g of G){const x=dist(la,lo,g.la,g.lo);if(x<bd){bd=x;b=g;}}return b;}
+// 현재 위치에서 가장 가까운 등록 지점까지 거리로 탐색 반경을 정한다.
+// 서울 도심: 6km. 경기 외곽·공항처럼 지점이 먼 곳: 최대 40km까지 넓혀
+// "콜 없는 지역"에서 추천이 비지 않도록 한다.
+function searchRadius(anchor){
+ const n=nearest(anchor.la,anchor.lo);
+ if(!n||n.km==null) return 6;
+ if(n.km<=4) return 6;                 // 도심
+ return Math.min(40, Math.max(12, n.km*2.2));   // 외곽일수록 넓게
+}
 function unified(anchor,h,spd){
  if(!valid(h)) return [];
  const i=idx(h), out=[], seen={};
+ const RAD=searchRadius(anchor);
  const push=(nm,gu,la,lo,tier,tag,extra)=>{
   const k=gu+'|'+nm; if(seen[k])return; seen[k]=1;
   const km=dist(anchor.la,anchor.lo,la,lo);
-  if(km>6) return;
+  if(km>RAD) return;
   const ng=nearGrid(la,lo);
   const raw=ng&&ng.w[i]!=null?ng.w[i]:null;
   if(raw==null) return;
@@ -1652,7 +1676,7 @@ function unified(anchor,h,spd){
    const mm=nm.replace('현위치 ','').split(',');
    const la=+mm[0], lo=+mm[1]; if(isNaN(la)||isNaN(lo)) continue;
    const k=gu+'|'+nm; if(seen[k]) continue; seen[k]=1;
-   const km=dist(anchor.la,anchor.lo,la,lo); if(km>6) continue;
+   const km=dist(anchor.la,anchor.lo,la,lo); if(km>RAD) continue;
    const mv=moveMin(anchor,{la,lo},25);
    out.push({nm,gu,la,lo,tier:'grid',tag:'',extra:'내 실측',km,move:mv.m,live:mv.live,
      raw:st.mean, obsN:st.n, learned:true, cv:st.cv, zb:1,
@@ -2810,15 +2834,22 @@ document.getElementById('setclose').onclick=async()=>{
  if(apiKey) autoEta(); else {liveOn=false; render();}};
 setSheet.onclick=e=>{if(e.target===setSheet)setSheet.classList.remove('on');};
 
-async function autoEta(){
+let lastEtaSig='', lastEtaAt=0;
+async function autoEta(force){
  const anchor = (occupied&&dest)?dest:cur;
  if(!anchor||!apiKey) return;
  const h=(occupied&&dest)?arrivalHour(dest,pos):new Date().getHours();
  if(!valid(h)) return;
+ // 절약: 같은 500m 격자·같은 시간대면 12분 안에는 재호출하지 않는다
+ const sig=cgr(anchor.la)+','+cgr(anchor.lo)+'|'+h;
+ if(!force && sig===lastEtaSig && Date.now()-lastEtaAt<720000){
+  liveOn=true; setLive('실시간'); return; }
+ lastEtaSig=sig; lastEtaAt=Date.now();
+ const R=searchRadius(anchor);
  const t=[...unified(anchor,h,25).map(x=>({la:x.la,lo:x.lo})),
-          ...SPOT.filter(v=>dist(anchor.la,anchor.lo,v.la,v.lo)<=6),
-          ...VET.filter(v=>v.h.includes(h)).filter(v=>dist(anchor.la,anchor.lo,v.la,v.lo)<=4).slice(0,8),
-          ...mySpots.filter(v=>v.h.includes(h)).filter(v=>dist(anchor.la,anchor.lo,v.la,v.lo)<=6)];
+          ...SPOT.filter(v=>dist(anchor.la,anchor.lo,v.la,v.lo)<=R),
+          ...VET.filter(v=>v.h.includes(h)).filter(v=>dist(anchor.la,anchor.lo,v.la,v.lo)<=R*0.7).slice(0,8),
+          ...mySpots.filter(v=>v.h.includes(h)).filter(v=>dist(anchor.la,anchor.lo,v.la,v.lo)<=R)];
  await refreshEta(t,anchor);
 }
 
@@ -2929,7 +2960,7 @@ tog.onclick=async()=>{
    const gap=(Date.now()-pv.end)/60000;
    // 서울 지점 12km 이내면 그 격자, 아니면 하차 좌표의 가상 격자에 기록
    const near=nearest(pv.tla,pv.tlo);
-   const ng = near.km>8 ? offGrid(pv.tla,pv.tlo) : nearGrid(pv.tla,pv.tlo);
+   const ng = near.km>50 ? offGrid(pv.tla,pv.tlo) : nearGrid(pv.tla,pv.tlo);
    const hh=new Date(pv.end).getHours();
    if(ng&&valid(hh)) obsAdd(ng.g,ng.n,hh,gap);
   }
