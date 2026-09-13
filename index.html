@@ -844,9 +844,68 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   <button data-tab="drive" class="on">운행</button>
   <button data-tab="anal">분석</button>
   <button data-tab="book">예약</button>
-  <button data-tab="tax">정산·세금</button>
+  <button data-tab="tax">정산</button>
+  <button data-tab="air">공항</button>
 </div>
 
+<div class="pane" id="pane-air">
+  <section>
+    <div class="eyebrow"><span>터미널</span><span id="air_dist" style="letter-spacing:0"></span></div>
+    <div class="pk" id="air_term">
+      <button data-tm="T1" class="on">T1 · 제1터미널</button>
+      <button data-tm="T2">T2 · 제2터미널</button>
+    </div>
+    <div class="eyebrow" style="margin-top:12px"><span>터미널 비교</span><span style="letter-spacing:0">지금 어디로</span></div>
+    <div id="air_cmp"><div class="empty" style="padding:12px">조회하면 T1·T2를 나란히 비교합니다.</div></div>
+
+    <div class="verdict" id="air_vd" style="margin-top:12px">
+      <div class="tag" id="air_tag"></div>
+      <div class="call" id="air_call">공항 데이터 대기</div>
+      <div class="why" id="air_why">설정에서 공공데이터 인증키를 입력하세요.</div>
+    </div>
+    <div class="here">
+      <div class="row mono">
+        <div><b>도착편</b><span id="air_f">-</span></div>
+        <div><b>추정 승객</b><span id="air_p">-</span></div>
+        <div><b>입국심사 대기</b><span id="air_c">-</span></div>
+        <div><b>내 평균대기</b><span id="air_w">-</span></div>
+      </div>
+    </div>
+    <button class="opt" id="air_refresh" style="text-align:center;border-color:var(--amber);color:var(--amber)">지금 조회</button>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="eyebrow"><span>오늘 도착 러시</span><span style="letter-spacing:0">시간대별 지수</span></div>
+    <div class="card"><div class="chart" id="air_ch"></div><div class="xlab" id="air_lb"></div>
+      <div class="meta mono" id="air_chcap" style="margin-top:6px;font-size:11px;color:var(--faint)"></div></div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="eyebrow"><span>예약콜 복귀 예측</span><span style="letter-spacing:0">최대 6일 뒤까지</span></div>
+    <div class="bkform" style="display:block">
+      <div class="fr"><label>도착 날짜</label><input id="air_fd" type="date"></div>
+      <div class="fr"><label>도착 시각</label><input id="air_ft" type="time"></div>
+      <button class="opt" id="air_fgo" style="text-align:center;margin-top:6px;border-color:var(--amber);color:var(--amber)">복귀 가능성 보기</button>
+    </div>
+    <div id="air_fres" style="margin-top:8px"></div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="eyebrow"><span>도착 예정편</span><span id="air_cnt" style="letter-spacing:0"></span></div>
+    <div id="air_list"></div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="eyebrow"><span>내 공항 기록</span><span id="air_logn" style="letter-spacing:0"></span></div>
+    <div class="bkform" style="display:block">
+      <div class="fr"><label>대기(분)</label><input id="air_in_w" type="number" inputmode="numeric" placeholder="도착 후 손님 태우기까지"></div>
+      <div class="fr"><label>목적지</label><input id="air_in_d" placeholder="예: 강남구"></div>
+      <div class="fr"><label>요금</label><input id="air_in_f" type="number" inputmode="numeric" placeholder="원"></div>
+      <button class="opt" id="air_add" style="text-align:center;margin-top:6px">이번 공항 운행 기록</button>
+    </div>
+    <div id="air_loglist" style="margin-top:8px"></div>
+  </section>
+</div>
 <div class="pane" id="pane-anal">
   <section>
     <div class="eyebrow"><span>기간</span><span id="anrange" style="letter-spacing:0"></span></div>
@@ -1074,6 +1133,8 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   <div class="sub2">실시간 소요시간 · 내 지점 관리</div>
   <label>TMAP appKey (실시간 소요시간)</label>
   <input id="key" placeholder="openapi.sk.com에서 무료 발급" autocomplete="off">
+  <label>공공데이터 인증키 (인천공항)</label>
+  <input id="airkey" placeholder="data.go.kr 일반 인증키" autocomplete="off" spellcheck="false">
   <div style="font-size:10.5px;color:var(--faint);margin:-4px 0 12px;line-height:1.5">
     비워두면 거리 기반 추정식을 씁니다. 경로안내 1일 1,000건 무료이며,
     키는 이 기기에만 저장됩니다.
@@ -1414,6 +1475,10 @@ function render(){
    (cx!=null?`<br>연결성 <b>${cx.toFixed(2)}</b> · ${cx>=1.3?'사람이 빠져나가는 곳':cx>=0.9?'유입과 유출이 비슷':'사람이 모이는 곳 — 하차 후 빈차 주의'}`:'');}
 
  // ── 즉시 이동 바: 이동 권고일 때만 목적지·거리·길찾기 노출 ──
+ // ── 공항권이면 판단 카드를 공항 모드로 덮어쓴다 (탭을 누르지 않아도 보이게) ──
+ const _am=(typeof airMode==='function')?airMode():null;
+ if(_am){ airOverlay(_am); }
+
  const gonow=document.getElementById('gonow');
  const moving = vd.className.indexOf('move')>=0;
  if(moving && best){
@@ -2665,13 +2730,14 @@ function renderAnal(){
 /* ─── 탭 ─── */
 document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{
  document.querySelectorAll('.tabbar button').forEach(x=>x.className=(x===b?'on':''));
- ['drive','anal','book','tax'].forEach(t=>{const el=document.getElementById('pane-'+t);
+ ['drive','anal','book','tax','air'].forEach(t=>{const el=document.getElementById('pane-'+t);
   if(el) el.className='pane'+(t===b.dataset.tab?' on':'');});
  const safe=(fn,nm)=>{try{ if(typeof fn==='function') fn(); }catch(e){ console.warn(nm,e.message); }};
  if(b.dataset.tab==='anal') safe(typeof renderAnal!=='undefined'&&renderAnal,'renderAnal');
  if(b.dataset.tab==='book') safe(typeof renderBook!=='undefined'&&renderBook,'renderBook');
  if(b.dataset.tab==='tax'){ safe(typeof renderExpList!=='undefined'&&renderExpList,'renderExpList');
                             safe(typeof renderTax!=='undefined'&&renderTax,'renderTax'); }
+ if(b.dataset.tab==='air') safe(typeof renderAir!=='undefined'&&renderAir,'renderAir');
  window.scrollTo(0,0);});
 
 /* ─── 날씨 (Open-Meteo · 키 불요) ─── */
@@ -2997,6 +3063,9 @@ document.getElementById('setclose').onclick=async()=>{
  try{
   await Store.set(KEY_CFG,CFG);
   await Store.set(KEY_API,apiKey);
+  const _ak=document.getElementById('airkey');
+  if(_ak){ airKey=(_ak.value||'').replace(/[\s"'`]/g,''); _ak.value=airKey;
+           await Store.set(KEY_AIRK,airKey); }
   const back=await Store.get(KEY_API);          // 실제 저장됐는지 재확인
   if(back!==apiKey) throw new Error('저장 확인 실패');
   msg.style.color='var(--occ)';
@@ -3030,6 +3099,352 @@ async function autoEta(force){
           ...VET.filter(v=>v.h.includes(h)).filter(v=>dist(anchor.la,anchor.lo,v.la,v.lo)<=R*0.7).slice(0,8),
           ...mySpots.filter(v=>v.h.includes(h)).filter(v=>dist(anchor.la,anchor.lo,v.la,v.lo)<=R)];
  await refreshEta(t,anchor);
+}
+
+
+/* ══════════ 공항 모듈 ══════════ */
+const AIRPORTS={T1:{n:'제1터미널',la:37.4491,lo:126.4509,term:['P01','P02']},
+                T2:{n:'제2터미널',la:37.4691,lo:126.4505,term:['P03']}};
+const AIR_RADIUS=15;                       // 공항권 반경(km)
+// 인천공항 시간대별 도착여객 지수(공공데이터 월간통계에서 산출, 17시=100)
+const AIR_CURVE=[9,9,4,27,46,54,62,61,39,33,37,64,57,71,73,85,87,100,70,62,60,61,41,15];
+const AIR_PAXPF=[190,180,211,226,217,217,218,217,194,221,192,210,202,207,212,221,227,231,204,200,197,203,196,178];
+let airKey='', airCache={}, airLog=[], airTerm='T1', airPend=null;
+const KEY_AIRK='gongcha:airkey', KEY_AIRLOG='gongcha:airlog';
+
+function airDist(t){ if(!pos) return 999;
+ const a=AIRPORTS[t]; return dist(pos.la,pos.lo,a.la,a.lo); }
+function nearAirport(){                    // 공항권이면 'T1'/'T2', 아니면 null
+ if(!pos) return null;
+ const d1=airDist('T1'), d2=airDist('T2');
+ if(Math.min(d1,d2)>AIR_RADIUS) return null;
+ return d1<=d2?'T1':'T2'; }
+function destIsAirport(){                  // 목적지가 공항인지
+ if(!dest||dest.la==null) return null;
+ const d1=dist(dest.la,dest.lo,AIRPORTS.T1.la,AIRPORTS.T1.lo);
+ const d2=dist(dest.la,dest.lo,AIRPORTS.T2.la,AIRPORTS.T2.lo);
+ if(Math.min(d1,d2)>AIR_RADIUS) return null;
+ return d1<=d2?'T1':'T2'; }
+function airMode(){ return destIsAirport()||nearAirport(); }
+
+const AIR_BASE='https://apis.data.go.kr/B551177/';
+async function airFetch(path,params){
+ if(!airKey) throw new Error('키없음');
+ const q=Object.keys(params).map(k=>k+'='+encodeURIComponent(params[k])).join('&');
+ const url=AIR_BASE+path+'?'+q+'&serviceKey='+airKey+'&type=json';
+ const r=await fetch(url); const t=await r.text();
+ let j; try{ j=JSON.parse(t); }catch(e){ throw new Error('형식오류'); }
+ const code=airDeep(j,'resultCode');
+ if(!(code==='00'||code===0||code==='0')) throw new Error(airDeep(j,'resultMsg')||'거부');
+ return airItems(j); }
+function airDeep(o,k){ if(!o||typeof o!=='object')return null;
+ if(o[k]!=null)return o[k];
+ for(const p in o){const r=airDeep(o[p],k); if(r!=null)return r;} return null; }
+function airItems(b){ const it=airDeep(b,'items');
+ if(!it)return []; if(Array.isArray(it))return it;
+ if(it.item)return Array.isArray(it.item)?it.item:[it.item]; return []; }
+
+// 도착편 조회 (코드쉐어 Slave 제외 — 같은 비행기가 중복 계수되는 것을 막는다)
+async function airArrivals(term,fromH,toH){
+ const ck=term+'|'+fromH+'|'+toH;
+ const c=airCache[ck]; if(c&&Date.now()-c.t<600000) return c.v;
+ const rows=await airFetch('StatusOfPassengerFlightsOdp/getPassengerArrivalsOdp',
+   {numOfRows:200,pageNo:1,lang:'K',from_time:fromH,to_time:toH});
+ const want=AIRPORTS[term].term;
+ const v=rows.filter(r=>want.indexOf(r.terminalId)>=0)
+             .filter(r=>String(r.codeshare||'').toLowerCase()!=='slave')
+             .filter(r=>!/결항|회항/.test(r.remark||''));
+ airCache[ck]={t:Date.now(),v}; return v; }
+
+// 입국장 혼잡도 (현재 심사 대기 인원)
+async function airCongestion(term){
+ const ck='cg|'+term; const c=airCache[ck];
+ if(c&&Date.now()-c.t<180000) return c.v;
+ const rows=await airFetch('StatusOfArrivals/getArrivalsCongestion',
+   {numOfRows:60,pageNo:1,terno:term});
+ const v=rows.reduce((a,r)=>({k:a.k+(+r.korean||0),f:a.f+(+r.foreigner||0),n:a.n+1}),{k:0,f:0,n:0});
+ airCache[ck]={t:Date.now(),v}; return v; }
+
+function hhmm(d){return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');}
+
+// 예측: 도착 예정 시각 기준 ±40분 도착편으로 수요를, 내 실측으로 대기를 낸다
+async function airPredict(term,at){
+ const t=at||new Date();
+ const a=new Date(t.getTime()-40*60000), b=new Date(t.getTime()+40*60000);
+ const out={term,hour:t.getHours(),flights:0,pax:0,curve:AIR_CURVE[t.getHours()],
+            dayCurve:null,wait:null,waitN:0,congest:null,err:null,live:false};
+ try{                                    // 오늘 실제 편성으로 곡선을 만든다
+  const sch=await airDaySchedule(airYMD(t));
+  const cnt=sch[term], mx=Math.max.apply(null,cnt)||1;
+  out.dayCurve=cnt.map(v=>Math.round(v/mx*100));
+  out.dayCount=cnt; out.curve=out.dayCurve[t.getHours()]; out.live=true;
+ }catch(e){ out.err=e.message; }
+ try{
+  const fl=await airArrivals(term,hhmm(a),hhmm(b));
+  out.flights=fl.length;
+  const pf=await airPaxPerFlight();
+  out.pax=Math.round(fl.length*pf[t.getHours()]);
+  out.top=fl.slice(0,8);
+ }catch(e){ if(!out.err) out.err=e.message; }
+ try{ out.congest=await airCongestion(term); }catch(e){}
+ const st=airWaitStat(term,t.getHours());
+ if(st){ out.wait=st.mean; out.waitN=st.n; }
+ return out; }
+
+/* ── 예약콜 복귀 예측 ──
+   공항행 예약을 받았을 때, 그 시각에 공항에 도착하면
+   복귀 손님을 태울 수 있을지 미리 본다 (최대 6일 뒤까지). */
+async function airReturnForecast(term,when){
+ const ymd=airYMD(when), h=when.getHours();
+ const o={term,when,hour:h,flights:0,pax:0,curve:0,rank:null,wait:null,err:null};
+ try{
+  const sch=await airDaySchedule(ymd);
+  const cnt=sch[term];
+  const win=[(h+23)%24,h,(h+1)%24];                 // 도착 전후 1시간
+  o.flights=win.reduce((a,x)=>a+cnt[x],0);
+  const mx=Math.max.apply(null,cnt)||1;
+  o.curve=Math.round(cnt[h]/mx*100);
+  const sorted=cnt.slice().map((v,i)=>({v,i})).sort((a,b)=>b.v-a.v);
+  o.rank=sorted.findIndex(x=>x.i===h)+1;            // 그날 24시간 중 몇 번째로 붐비는 시각인지
+  const pf=await airPaxPerFlight();
+  o.pax=Math.round(o.flights*pf[h]);
+ }catch(e){ o.err=e.message; }
+ const st=airWaitStat(term,h)||airWaitAll(term);
+ if(st){ o.wait=st.mean; o.waitN=st.n; }
+ return o; }
+
+// 내 실측 대기 학습 (터미널 × 시간대)
+function airWaitStat(term,h){
+ const rows=airLog.filter(x=>x.term===term&&x.h===h&&x.wait>0);
+ if(!rows.length) return null;
+ const m=rows.reduce((a,x)=>a+x.wait,0)/rows.length;
+ return {n:rows.length,mean:m}; }
+function airWaitAll(term){
+ const rows=airLog.filter(x=>x.term===term&&x.wait>0);
+ if(!rows.length) return null;
+ return {n:rows.length,mean:rows.reduce((a,x)=>a+x.wait,0)/rows.length}; }
+async function airLogSave(){ try{ await Store.set(KEY_AIRLOG,airLog); }catch(e){} }
+
+
+
+/* ── 실제 스케줄 기반 일별 도착 곡선 ──
+   주간운항 API는 오늘~6일 뒤 실제 편성을 준다. 월평균 추정 대신
+   그날의 진짜 편수를 세므로 성수기·연휴·특별편이 자동 반영된다. */
+let airDayCache={}, airPaxPF=null;
+function airYMD(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');}
+
+async function airDaySchedule(ymd){                 // {T1:[24], T2:[24], flights:[...]}
+ if(airDayCache[ymd]&&Date.now()-airDayCache[ymd].t<3600000) return airDayCache[ymd].v;
+ const rows=await airFetch('StatusOfPassengerFlightsDSOdp/getPassengerArrivalsDSOdp',{});
+ const v={T1:new Array(24).fill(0),T2:new Array(24).fill(0),list:[]};
+ rows.forEach(r=>{
+  const dt=String(r.scheduleDateTime||'');
+  if(dt.slice(0,8)!==ymd) return;
+  if(String(r.codeshare||'').toLowerCase()==='slave') return;   // 코드셰어 중복 제외
+  if(/결항|회항/.test(r.remark||'')) return;
+  const tm=String(r.terminalid||r.terminalId||'');
+  const key=(tm==='P03')?'T2':'T1';                              // P01·P02는 T1 승강장
+  const h=+dt.slice(8,10); if(isNaN(h)||h<0||h>23) return;
+  v[key][h]++; v.list.push({h,key,r});
+ });
+ airDayCache[ymd]={t:Date.now(),v}; return v;
+}
+// 편당 평균 승객: 월간 통계에서 시간대별로 산출 (하루 1회 캐시)
+async function airPaxPerFlight(){
+ if(airPaxPF&&Date.now()-airPaxPF.t<86400000) return airPaxPF.v;
+ const now=new Date(); let v=null;
+ for(let back=1;back<=3&&!v;back++){                 // 공표 시차 대비 최근 달부터 역순
+  const d=new Date(now.getFullYear(),now.getMonth()-back,1);
+  const ym=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0');
+  try{
+   const [pa,fl]=await Promise.all([
+    airFetch('AviationStatsByTimeline/getTotalNumberOfPassenger',{from_month:ym,to_month:ym,domestic_foreign:'I'}),
+    airFetch('AviationStatsByTimeline/getTotalNumberOfFlight',{from_month:ym,to_month:ym,pax_cargo:'Y',domestic_foreign:'I'})]);
+   const num=x=>+String(x||'0').replace(/,/g,'');
+   const arr=new Array(24).fill(null);
+   pa.forEach(row=>{ const h=+String(row.time||'').slice(0,2);
+    const f=fl.find(x=>x.time===row.time); if(!f)return;
+    const nf=num(f.arrFlight); if(nf>0) arr[h]=Math.round(num(row.arrPassenger)/nf); });
+   if(arr.some(x=>x)) v=arr.map((x,i)=>x||AIR_PAXPF[i]);
+  }catch(e){}
+ }
+ v=v||AIR_PAXPF.slice();
+ airPaxPF={t:Date.now(),v}; return v;
+}
+
+
+/* ── 터미널 비교 ──
+   T2는 대한항공·아시아나(2026.01 이전)·진에어·에어부산·에어서울 등
+   국적사 중심이라 내국인 비중이 높다. T1은 외항사·LCC 중심.
+   벤티는 내국인 이용이 많아 이 차이가 배차 확률에 직결된다. */
+async function airCompare(){
+ const t=new Date(), h=t.getHours();
+ const a=new Date(t.getTime()-40*60000), b=new Date(t.getTime()+40*60000);
+ const out={};
+ let sch=null; try{ sch=await airDaySchedule(airYMD(t)); }catch(e){}
+ for(const tm of ['T1','T2']){
+  const o={term:tm,flights:0,pax:0,kor:0,fgn:0,day:null,err:null};
+  try{ const fl=await airArrivals(tm,hhmm(a),hhmm(b));
+       o.flights=fl.length;
+       const pf=await airPaxPerFlight(); o.pax=Math.round(fl.length*pf[h]);
+  }catch(e){ o.err=e.message; }
+  try{ const c=await airCongestion(tm); o.kor=c.k; o.fgn=c.f; }catch(e){}
+  if(sch) o.day=sch[tm];
+  out[tm]=o;
+ }
+ return out;
+}
+function airPickTerminal(c){
+ const s=tm=>{ const o=c[tm]; if(!o) return -1;
+  const tot=o.kor+o.fgn;
+  const korShare = tot>0 ? o.kor/tot : (tm==='T2'?0.6:0.35);   // 자료 없으면 터미널 성향값
+  // 벤티는 내국인 수요가 핵심 → 내국인 인원에 가중
+  return o.flights*10 + o.kor*1.0 + o.fgn*0.35 + korShare*40; };
+ const s1=s('T1'), s2=s('T2');
+ const gap=Math.abs(s1-s2), mx=Math.max(s1,s2)||1;
+ return {pick:s1>=s2?'T1':'T2', close: gap/mx < 0.18, s1, s2};
+}
+function airRenderCompare(c){
+ const box=document.getElementById('air_cmp'); if(!box) return;
+ const p=airPickTerminal(c);
+ const row=tm=>{ const o=c[tm]||{}; const tot=(o.kor||0)+(o.fgn||0);
+  const ks=tot>0?Math.round(o.kor/tot*100):null;
+  const win=p.pick===tm&&!p.close;
+  return `<div class="pick ${win?'t-s3':''}">
+   <div class="idx mono">${tm}</div>
+   <div class="body">
+     <div class="nm">${AIRPORTS[tm].n}${win?' <span style="color:var(--occ);font-size:11px">추천</span>':''}</div>
+     <div class="meta mono">±40분 <b>${o.flights||0}편</b> · 추정 <b>${(o.pax||0).toLocaleString()}명</b></div>
+     <div class="meta mono">심사대기 내국인 <b style="color:var(--occ)">${(o.kor||0).toLocaleString()}</b>`+
+     ` · 외국인 ${(o.fgn||0).toLocaleString()}${ks!=null?` · 내국인 <b>${ks}%</b>`:''}</div>
+   </div></div>`; };
+ let tip;
+ if(p.close) tip=`두 터미널이 비슷합니다. <b>중간 대기</b>도 방법입니다 — 콜이 뜨는 쪽으로 5분 내 이동할 수 있습니다.`;
+ else tip=`<b>${AIRPORTS[p.pick].n}</b> 쪽 수요가 뚜렷합니다. 터미널 간 이동은 차로 약 15분이니 미리 자리를 잡으세요.`;
+ box.innerHTML=row('T1')+row('T2')+
+  `<div class="note2" style="margin-top:8px">${tip}<br>`+
+  `<span style="color:var(--faint)">T2는 대한항공·아시아나·진에어·에어부산·에어서울 등 국적사 중심이라 내국인 비중이 높습니다. `+
+  `T1은 외항사와 LCC 중심입니다.</span></div>`;
+}
+
+/* ── 공항 탭 렌더 ── */
+function airSetVerdict(cls,call,why,tag){
+ const vd=document.getElementById('air_vd');
+ vd.className='verdict '+cls;
+ document.getElementById('air_tag').innerHTML=tag||'';
+ document.getElementById('air_call').textContent=call;
+ document.getElementById('air_why').innerHTML=why;
+}
+function airCurveDraw(cnt){
+ const now=new Date().getHours();
+ const el=document.getElementById('air_ch'), lb=document.getElementById('air_lb');
+ if(!el||!lb) return;
+ const live=!!cnt;
+ const src=cnt||AIR_CURVE;                      // 실제 편수가 있으면 그것으로
+ const mx=Math.max.apply(null,src)||1;
+ el.innerHTML=src.map((v,h)=>
+  `<div class="${h===now?'':'dim'}" style="height:${Math.max(2,v/mx*96)}px" title="${h}시 ${live?v+'편':'지수 '+v}"></div>`).join('');
+ lb.innerHTML=src.map((v,h)=>`<span>${h%3===0?h:''}</span>`).join('');
+ const cap=document.getElementById('air_chcap');
+ if(cap) cap.textContent=live?'오늘 실제 편성 · 시간대별 도착편 수':'월평균 추정 (조회 전)';
+}
+function airLogDraw(){
+ const el=document.getElementById('air_loglist'); if(!el) return;
+ document.getElementById('air_logn').textContent=airLog.length?airLog.length+'건':'';
+ if(!airLog.length){ el.innerHTML='<div class="empty" style="padding:14px">기록이 쌓이면 시간대별 실제 대기시간을 예측에 씁니다.</div>'; return; }
+ el.innerHTML=airLog.slice(-12).reverse().map(x=>
+  `<div class="pick"><div class="body"><div class="nm">${x.term} · ${String(x.h).padStart(2,'0')}시${x.dest?' → '+x.dest:''}</div>`+
+  `<div class="meta mono">대기 ${x.wait}분${x.fare?' · '+(+x.fare).toLocaleString()+'원':''} · ${x.date||''}</div></div></div>`).join('');
+}
+async function renderAir(){
+ airCurveDraw(); airLogDraw();
+ document.querySelectorAll('#air_term button').forEach(b=>
+   b.className=(b.dataset.tm===airTerm?'on':''));
+ const d=airDist(airTerm);
+ document.getElementById('air_dist').textContent=pos?(d<900?d.toFixed(0)+'km':''):'';
+ const wa=airWaitAll(airTerm);
+ document.getElementById('air_w').textContent=wa?wa.mean.toFixed(0)+'분':'-';
+ if(!airKey){
+  airSetVerdict('na','인증키가 없습니다',
+   '설정 → 공공데이터 인증키에 키를 넣으면 실시간 도착편과 입국장 혼잡도를 불러옵니다.');
+  return; }
+ airSetVerdict('','조회 중…','인천공항 도착편을 확인하고 있습니다.');
+ const r=await airPredict(airTerm);
+ airRenderResult(r);
+ try{ airRenderCompare(await airCompare()); }catch(e){}
+}
+function airRenderResult(r){
+ document.getElementById('air_f').textContent=r.flights?r.flights+'편':'-';
+ document.getElementById('air_p').textContent=r.pax?r.pax.toLocaleString()+'명':'-';
+ document.getElementById('air_c').textContent=r.congest?(r.congest.k+r.congest.f).toLocaleString()+'명':'-';
+ const cnt=document.getElementById('air_cnt');
+ if(cnt) cnt.textContent=r.flights?'±40분 '+r.flights+'편':'';
+ // 판단
+ const idx=r.curve, fl=r.flights;
+ let cls,call,why;
+ if(r.err&&!fl){ cls='na'; call='조회 실패'; why=r.err+' — 활용신청과 인증키를 확인하세요.'; }
+ else{
+  const busy = idx>=70 || fl>=12;
+  const slow = idx<=30 && fl<=4;
+  cls = busy?'move':(slow?'na':'stay');
+  call = busy?'도착 러시 — 콜 잘 뜨는 때':(slow?'한산 — 대기 길어질 수 있음':'보통');
+  const parts=[];
+  parts.push(`±40분 도착 <b>${fl}편</b> · 추정 승객 <b>${r.pax.toLocaleString()}명</b>`);
+  parts.push(`이 시간대 도착 지수 <b>${idx}</b>/100`);
+  if(r.congest&&(r.congest.k+r.congest.f)>0)
+   parts.push(`입국심사 대기 <b>${(r.congest.k+r.congest.f).toLocaleString()}명</b>`+
+              ` (내국인 ${r.congest.k.toLocaleString()} · 외국인 ${r.congest.f.toLocaleString()})`);
+  if(r.wait!=null) parts.push(`내 실측 평균 대기 <b>${r.wait.toFixed(0)}분</b> (${r.waitN}회)`);
+  else parts.push(`<span style="color:var(--faint)">공항 운행을 기록하면 실제 대기시간이 예측에 반영됩니다.</span>`);
+  why=parts.join('<br>');
+ }
+ if(r.dayCount) airCurveDraw(r.dayCount);
+ airSetVerdict(cls,call,why,
+  `${AIRPORTS[r.term].n} <span class="live off">${r.live?'오늘 편성':(airKey?'실시간':'추정')}</span>`);
+ // 도착 예정편 목록
+ const list=document.getElementById('air_list');
+ if(list) list.innerHTML=(r.top&&r.top.length)?r.top.map(f=>
+   `<div class="pick"><div class="body"><div class="nm">${f.flightId} <span style="font-size:11px;color:var(--dim);font-weight:400">${f.airline||''}</span></div>`+
+   `<div class="meta mono">${f.airport||''} · ${f.estimatedDateTime||f.scheduleDateTime||''} · 수취대 ${f.carousel||'-'} · 출구 ${f.exitnumber||'-'} · ${f.remark||''}</div></div></div>`
+  ).join(''):'<div class="pick"><div class="body"><div class="meta">해당 시간대 도착편이 없습니다.</div></div></div>';
+}
+
+
+/* ── 운행 탭 판단 카드 위에 공항 판단을 얹는다 ── */
+let airOverT=0, airOverR=null;
+function airOverlay(term){
+ const vd=document.getElementById('vd'), vt=document.getElementById('vt'),
+       vc=document.getElementById('vc'), vw=document.getElementById('vw');
+ if(!vd) return;
+ const going = destIsAirport()===term && !nearAirport();   // 가는 중 / 도착해 있음
+ const idx=AIR_CURVE[new Date().getHours()];
+ const st=airWaitStat(term,new Date().getHours())||airWaitAll(term);
+ vt.innerHTML=`${AIRPORTS[term].n} ${going?'도착 예정':'현재 위치'} `+
+   `<span class="live off">${airKey?(airOverR?'실시간':'조회중'):'추정'}</span>`;
+ const r=airOverR;
+ if(r&&r.term===term){
+  const busy = r.curve>=70 || r.flights>=12;
+  vd.className='verdict '+(busy?'move':(r.curve<=30?'na':'stay'));
+  vc.textContent = busy?'도착 러시 — 콜 잘 뜨는 때':(r.curve<=30?'한산 — 대기 길어질 수 있음':'보통');
+  const p=[`±40분 도착 <b>${r.flights}편</b> · 추정 승객 <b>${r.pax.toLocaleString()}명</b> · 지수 <b>${r.curve}</b>`];
+  if(r.congest&&(r.congest.k+r.congest.f)>0){
+   const tot=r.congest.k+r.congest.f, ks=Math.round(r.congest.k/tot*100);
+   p.push(`심사대기 내국인 <b style="color:var(--occ)">${r.congest.k.toLocaleString()}</b>`+
+          ` · 외국인 ${r.congest.f.toLocaleString()} (내국인 ${ks}%)`);}
+  if(st) p.push(`내 실측 평균 <b>${st.mean.toFixed(0)}분</b> (${st.n}회)`);
+  vw.innerHTML=p.join('<br>');
+ }else{
+  vd.className='verdict stay';
+  vc.textContent = idx>=70?'도착 러시 시간대':(idx<=30?'한산한 시간대':'보통 시간대');
+  vw.innerHTML=`이 시간대 도착 지수 <b>${idx}</b>/100`+
+   (st?`<br>내 실측 평균 <b>${st.mean.toFixed(0)}분</b> (${st.n}회)`:'')+
+   (airKey?'':'<br><span style="color:var(--faint)">설정에 공공데이터 인증키를 넣으면 실시간 도착편이 표시됩니다.</span>');
+ }
+ // 실데이터를 5분마다 한 번씩만 갱신 (호출 절약)
+ if(airKey && Date.now()-airOverT>300000){
+  airOverT=Date.now();
+  airPredict(term).then(x=>{airOverR=x; render();}).catch(()=>{});
+ }
 }
 
 /* ─── 3단계 게이지 ─── */
@@ -3263,6 +3678,53 @@ document.getElementById('clr').onclick=async()=>{
    if(l.dest){let b=null;for(const g of G)if(g.n===l.dest&&(!b))b=g;dest=b;}}}
  try{buildZoneRate();}catch(e){console.warn('buildZoneRate 건너뜀',e.message);}
  try{drawTags();}catch(e){console.warn('drawTags 건너뜀',e.message);}
+ try{ airKey=(await Store.get(KEY_AIRK))||''; airLog=(await Store.get(KEY_AIRLOG))||[];
+      const _ak=document.getElementById('airkey'); if(_ak) _ak.value=airKey;
+ }catch(e){ console.warn('공항 설정 로드 실패',e.message); }
+ // 공항 탭 이벤트
+ const _bind=(id,fn)=>{const e=document.getElementById(id); if(e) e.onclick=fn;};
+ const _tm=document.getElementById('air_term');
+ if(_tm) _tm.onclick=e=>{const b=e.target.closest('button'); if(!b)return;
+   airTerm=b.dataset.tm; renderAir();};
+ _bind('air_refresh',()=>{airCache={}; airDayCache={}; renderAir();});
+ _bind('air_fgo',async()=>{
+   const box=document.getElementById('air_fres');
+   const dv=document.getElementById('air_fd').value, tv=document.getElementById('air_ft').value;
+   if(!dv||!tv){ box.innerHTML='<div class="empty" style="padding:12px">날짜와 시각을 넣어주세요.</div>'; return; }
+   if(!airKey){ box.innerHTML='<div class="empty" style="padding:12px">공공데이터 인증키가 필요합니다.</div>'; return; }
+   const when=new Date(dv+'T'+tv);
+   const days=Math.floor((when-new Date())/86400000);
+   if(days>6){ box.innerHTML='<div class="empty" style="padding:12px">스케줄은 6일 뒤까지만 제공됩니다.</div>'; return; }
+   box.innerHTML='<div class="empty" style="padding:12px">조회 중…</div>';
+   const f=await airReturnForecast(airTerm,when);
+   if(f.err){ box.innerHTML='<div class="empty" style="padding:12px">조회 실패 — '+f.err+'</div>'; return; }
+   const good = f.rank&&f.rank<=8;
+   const bad  = f.rank&&f.rank>=17;
+   const lvl = good?'복귀 손님 잡기 좋음':(bad?'한산 — 공차 회송 각오':'보통');
+   const col = good?'var(--occ)':(bad?'var(--vac)':'var(--amber)');
+   box.innerHTML=
+    `<div class="verdict ${good?'move':(bad?'na':'stay')}">`+
+    `<div class="tag">${AIRPORTS[airTerm].n} · ${dv} ${tv} 도착 기준</div>`+
+    `<div class="call" style="color:${col}">${lvl}</div>`+
+    `<div class="why">전후 1시간 도착 <b>${f.flights}편</b> · 추정 승객 <b>${f.pax.toLocaleString()}명</b><br>`+
+    `그날 24시간 중 <b>${f.rank}번째</b>로 붐비는 시각 (혼잡 지수 ${f.curve}/100)`+
+    (f.wait!=null?`<br>내 실측 평균 대기 <b>${f.wait.toFixed(0)}분</b> (${f.waitN||0}회)`:'')+
+    `</div></div>`;
+ });
+ _bind('air_add',async()=>{
+   const w=+document.getElementById('air_in_w').value;
+   if(!w||w<=0){alert('대기 시간을 입력하세요');return;}
+   const now=new Date();
+   airLog.push({term:airTerm,h:now.getHours(),wait:w,
+     dest:document.getElementById('air_in_d').value.trim(),
+     fare:+document.getElementById('air_in_f').value||0,
+     date:bizDate(), ts:Date.now()});
+   await airLogSave();
+   document.getElementById('air_in_w').value='';
+   document.getElementById('air_in_d').value='';
+   document.getElementById('air_in_f').value='';
+   airLogDraw(); renderAir();
+ });
  locate();render();setInterval(render,30000);
  setTimeout(weeklySuggest,4000);
  setTimeout(loadWx,3000); setInterval(loadWx,1800000);})();
