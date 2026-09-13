@@ -1,0 +1,154 @@
+<!DOCTYPE html><html lang="ko"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A0A0B">
+<title>공차 — 공공데이터 API 연결 진단</title>
+<style>
+:root{--bg:#0A0A0B;--panel:#141417;--line:#26262B;--amber:#FFB020;
+ --vac:#E8503A;--occ:#3ECF8E;--txt:#E8E6E1;--dim:#7A7A82;--faint:#4A4A52}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--txt);font-feature-settings:"tnum";
+ font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+body{max-width:520px;margin:0 auto;padding:0 16px 40px;min-height:100vh}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+header{display:flex;align-items:baseline;gap:9px;padding:14px 0 10px;border-bottom:1px solid var(--line)}
+header .mark{font-size:19px;font-weight:800;letter-spacing:-.5px;color:var(--amber)}
+header .st{font-size:10.5px;padding:2px 7px;border:1px solid var(--vac);color:var(--vac);letter-spacing:.5px}
+h2{font-size:12px;color:var(--dim);font-weight:600;letter-spacing:.4px;margin:18px 0 7px}
+p.note{font-size:12px;color:var(--dim);line-height:1.55;margin:8px 0}
+input{width:100%;padding:13px;background:var(--panel);border:1px solid var(--line);
+ color:var(--txt);font-family:ui-monospace,monospace;font-size:12px}
+input:focus{outline:none;border-color:var(--amber)}
+button.run{width:100%;padding:15px;margin-top:10px;background:transparent;border:1px solid var(--amber);
+ color:var(--amber);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
+button.run:disabled{border-color:var(--line);color:var(--faint);cursor:default}
+.row{border:1px solid var(--line);border-bottom:none;padding:11px 12px;display:flex;
+ align-items:flex-start;gap:10px;background:var(--panel)}
+.row:last-of-type{border-bottom:1px solid var(--line)}
+.row .nm{flex:1;min-width:0}
+.row .t{font-size:13.5px;font-weight:700}
+.row .d{font-size:11px;color:var(--dim);margin-top:2px;word-break:break-all;line-height:1.45}
+.badge{flex:0 0 auto;font-size:10.5px;padding:3px 8px;border:1px solid var(--faint);
+ color:var(--faint);letter-spacing:.4px;white-space:nowrap}
+.badge.ok{border-color:var(--occ);color:var(--occ)}
+.badge.no{border-color:var(--vac);color:var(--vac)}
+.badge.run{border-color:var(--amber);color:var(--amber)}
+.verdict{border:1px solid var(--line);border-left:3px solid var(--faint);padding:14px;margin-top:16px;background:var(--panel)}
+.verdict.pass{border-left-color:var(--occ)}
+.verdict.fail{border-left-color:var(--vac)}
+.verdict .h{font-size:17px;font-weight:800;margin-bottom:6px}
+.verdict .b{font-size:12.5px;color:var(--dim);line-height:1.6}
+.verdict.pass .h{color:var(--occ)} .verdict.fail .h{color:var(--vac)}
+details{margin-top:8px} summary{font-size:11.5px;color:var(--faint);cursor:pointer}
+pre{margin-top:6px;padding:9px;background:#0E0E10;border:1px solid var(--line);
+ font-size:10.5px;color:var(--dim);white-space:pre-wrap;word-break:break-all;max-height:170px;overflow:auto}
+</style></head><body>
+
+<header><span class="mark">공차</span><span class="st">진단</span>
+<span style="margin-left:auto;font-size:11px;color:var(--faint)" class="mono">공공데이터 API</span></header>
+
+<p class="note">인증키를 넣고 실행하면, <b>공차 앱과 똑같은 조건</b>(브라우저에서 직접 호출)으로
+인천공항 API 5종을 시험합니다. 주소창에서 되는 것과 앱에서 되는 것은 다를 수 있어
+이 진단이 필요합니다.</p>
+
+<h2>인증키 (Encoding)</h2>
+<input id="key" placeholder="일반 인증키를 붙여넣으세요" autocomplete="off" spellcheck="false">
+<button class="run" id="go">5종 연결 시험</button>
+
+<div id="list" style="margin-top:16px"></div>
+<div id="verdict"></div>
+
+<script>
+var BASE='https://apis.data.go.kr/B551177/';
+var TESTS=[
+ {t:'입국장 혼잡도', d:'편별 내·외국인 수 · 1분 갱신',
+  u:'StatusOfArrivals/getArrivalsCongestion?numOfRows=5&pageNo=1&terno=T1',
+  pick:function(b){var i=items(b);return i.length?i.length+'편 · 내국인/외국인 값 수신':'해당 시간대 도착편 없음(정상)';}},
+ {t:'여객편 운항현황', d:'수하물수취대 · 게이트 · 터미널',
+  u:'StatusOfPassengerFlightsOdp/getPassengerArrivalsOdp?numOfRows=5&pageNo=1&lang=K',
+  pick:function(b){var i=items(b);if(!i.length)return '데이터 없음';
+   var f=i[0];return f.flightId+' '+(f.airport||'')+' 수취대'+(f.carousel||'-')+' '+(f.terminalId||'');}},
+ {t:'여객편 주간운항', d:'오늘~6일 뒤 예정편 (예약용)',
+  u:'StatusOfPassengerFlightsDSOdp/getPassengerArrivalsDSOdp?numOfRows=5&pageNo=1',
+  pick:function(b){var i=items(b);var tc=deep(b,'totalCount');
+   return (tc?tc+'건 중 ':'')+(i.length?i.length+'건 수신':'0건');}},
+ {t:'시간대별 통계', d:'월별 시간대 여객수 (기준선)',
+  u:'AviationStatsByTimeline/getTotalNumberOfPassenger?from_month=202608&to_month=202608&domestic_foreign=I',
+  pick:function(b){var i=items(b);if(!i.length)return '해당 월 데이터 없음';
+   return i.length+'개 시간대 · 예: '+i[0].time+' 도착 '+i[0].arrPassenger;}},
+ {t:'정기운항편 일정', d:'요일별 취항 패턴',
+  u:'PaxFltSched/getPaxFltSchedArrivals?numOfRows=5&pageNo=1&lang=K',
+  pick:function(b){var i=items(b);if(!i.length)return '데이터 없음';
+   return i[0].flightid+' '+(i[0].airport||'')+' '+i[0].st;}}
+];
+
+function deep(o,k){ // 응답 구조가 조금씩 달라 재귀로 찾는다
+ if(!o||typeof o!=='object')return null;
+ if(o[k]!=null)return o[k];
+ for(var p in o){var r=deep(o[p],k); if(r!=null)return r;}
+ return null;}
+function items(b){var it=deep(b,'items');
+ if(!it)return []; if(Array.isArray(it))return it;
+ if(it.item)return Array.isArray(it.item)?it.item:[it.item];
+ return [];}
+
+var listEl=document.getElementById('list');
+TESTS.forEach(function(t,n){
+ var d=document.createElement('div'); d.className='row'; d.id='r'+n;
+ d.innerHTML='<div class="nm"><div class="t">'+t.t+'</div><div class="d">'+t.d+'</div></div>'+
+   '<span class="badge" id="b'+n+'">대기</span>';
+ listEl.appendChild(d);});
+
+function setB(n,cls,txt){var b=document.getElementById('b'+n);b.className='badge '+cls;b.textContent=txt;}
+function setD(n,txt,raw){
+ var r=document.getElementById('r'+n), el=r.querySelector('.d');
+ el.textContent=txt;
+ if(raw){var ds=document.createElement('details');
+  ds.innerHTML='<summary>응답 원문 보기</summary><pre>'+raw.slice(0,900).replace(/</g,'&lt;')+'</pre>';
+  r.querySelector('.nm').appendChild(ds);}}
+
+document.getElementById('go').onclick=async function(){
+ var key=document.getElementById('key').value.replace(/[\s"'`]/g,'');
+ if(!key){alert('인증키를 넣어주세요');return;}
+ this.disabled=true; this.textContent='시험 중…';
+ document.getElementById('verdict').innerHTML='';
+ var pass=0, cors=0, fail=0;
+ for(var n=0;n<TESTS.length;n++){
+  var t=TESTS[n]; setB(n,'run','호출중');
+  var url=BASE+t.u+'&serviceKey='+key+'&type=json';
+  try{
+   var res=await fetch(url,{method:'GET'});
+   var txt=await res.text();
+   var j=null; try{j=JSON.parse(txt);}catch(e){}
+   if(!j){ setB(n,'no','형식오류'); setD(n,'JSON이 아닌 응답 — 아래 원문 확인',txt); fail++; }
+   else{
+    var code=deep(j,'resultCode'), msg=deep(j,'resultMsg');
+    if(code==='00'||code===0||code==='0'){
+     setB(n,'ok','성공'); setD(n,t.pick(j)); pass++;
+    }else{ setB(n,'no','거부'); setD(n,(code||'?')+' '+(msg||'')+' — 활용신청 상태를 확인하세요',txt); fail++; }
+   }
+  }catch(e){
+   setB(n,'no','차단'); cors++;
+   setD(n,'브라우저가 호출을 막았습니다 (CORS) — '+e.message);
+  }
+ }
+ var v=document.getElementById('verdict');
+ if(cors>0){
+  v.className='verdict fail';
+  v.innerHTML='<div class="h">브라우저에서 직접 호출 불가</div><div class="b">'+
+   cors+'건이 CORS로 차단됐습니다. 공공데이터 서버가 브라우저 호출을 허용하지 않는다는 뜻입니다.<br><br>'+
+   '앱에 그대로 넣을 수 없으니 <b>우회 경로</b>가 필요합니다. 이 결과를 알려주시면 방법을 설계하겠습니다.</div>';
+ }else if(pass===TESTS.length){
+  v.className='verdict pass';
+  v.innerHTML='<div class="h">전부 통과 — 앱에 넣을 수 있습니다</div><div class="b">'+
+   '5종 모두 브라우저에서 직접 호출됐습니다. 공항 탭 개발을 바로 시작할 수 있습니다.</div>';
+ }else{
+  v.className='verdict fail';
+  v.innerHTML='<div class="h">'+pass+'/'+TESTS.length+' 통과</div><div class="b">'+
+   'CORS 차단은 없었지만 '+fail+'건이 실패했습니다. 대개 해당 API 활용신청이 안 됐거나 '+
+   '조회 조건에 데이터가 없는 경우입니다. 각 항목의 설명을 확인해 주세요.</div>';
+ }
+ this.disabled=false; this.textContent='다시 시험';
+};
+</script>
+</body></html>
