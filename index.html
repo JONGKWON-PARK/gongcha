@@ -3183,6 +3183,8 @@ function kmaGrid(lat,lon){
 
 /* ── 날씨: 기상청 초단기실황 ── */
 const PTY_NAME={0:'없음',1:'비',2:'비/눈',3:'눈',5:'빗방울',6:'빗방울/눈',7:'눈날림'};
+// 하늘상태(SKY) 코드 : 맑음(1), 구름많음(3), 흐림(4) — 공식 가이드 기준
+const SKY_NAME={1:'맑음',3:'구름많음',4:'흐림'};
 function wxClass(o){
  if(!o) return null;
  const p=+o.pty||0, r=+o.rn1||0, t=o.t1h!=null?+o.t1h:null;
@@ -3191,14 +3193,15 @@ function wxClass(o){
  if(p===1||p===5) return r>=3?'강한비':'약한비';
  if(t!=null&&t<=-5) return '혹한';
  if(t!=null&&t>=33) return '혹서';
- return o.sky==='흐림'?'흐림':'맑음';
+ return SKY_NAME[+o.sky]||'맑음';      // SKY가 없으면 맑음으로 둔다
 }
 async function wxFetch(la,lo){
  if(!airKey) return null;
  const g=kmaGrid(la,lo);
  // 매시 정시 관측 · 약 40분 후 제공 → 40분 이전이면 직전 시각 사용
+ // 초단기실황: 매시 정시 관측, 매시각 10분 이후 제공 (여유 5분)
  const n=new Date();
- if(n.getMinutes()<40) n.setHours(n.getHours()-1);
+ if(n.getMinutes()<15) n.setHours(n.getHours()-1);
  const base=String(n.getHours()).padStart(2,'0')+'00';
  const ymd=n.getFullYear()+String(n.getMonth()+1).padStart(2,'0')+String(n.getDate()).padStart(2,'0');
  const ck=`${g.nx},${g.ny},${ymd},${base}`;
@@ -3215,9 +3218,27 @@ async function wxFetch(la,lo){
   if(x.category==='PTY') o.pty=v; if(x.category==='RN1') o.rn1=v;
   if(x.category==='T1H') o.t1h=v;  if(x.category==='WSD') o.wsd=v;
   if(x.category==='REH') o.reh=v; });
+ // 실황에는 하늘상태가 없다. 초단기예보(같은 서비스·같은 키)에서 SKY를 받아 합친다.
+ try{ const sky=await wxSky(g); if(sky!=null) o.sky=sky; }catch(e){}
  o.cls=wxClass(o); o.nx=g.nx; o.ny=g.ny; o.at=Date.now();
  wxLast={ck,v:o}; try{ Store.set(KEY_WXC,{ck,v:o}); }catch(e){}
  return o;
+}
+// 초단기예보 — 발표는 매시 30분, 45분 이후 제공. 가장 이른 예보시각의 SKY를 쓴다.
+async function wxSky(g){
+ const n=new Date();
+ if(n.getMinutes()<50) n.setHours(n.getHours()-1);
+ const base=String(n.getHours()).padStart(2,'0')+'30';
+ const ymd=n.getFullYear()+String(n.getMonth()+1).padStart(2,'0')+String(n.getDate()).padStart(2,'0');
+ const u='https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst'+
+   `?serviceKey=${airKey}&numOfRows=60&pageNo=1&dataType=JSON`+
+   `&base_date=${ymd}&base_time=${base}&nx=${g.nx}&ny=${g.ny}`;
+ const r=await fetch(u); const j=JSON.parse(await r.text());
+ const code=airDeep(j,'resultCode');
+ if(!(code==='00'||code===0||code==='0')) return null;
+ const sk=airItems(j).filter(x=>x.category==='SKY')
+   .sort((a,b)=>(a.fcstDate+a.fcstTime)<(b.fcstDate+b.fcstTime)?-1:1);
+ return sk.length?+sk[0].fcstValue:null;
 }
 // 운행 기록에 붙일 날씨 (실패해도 기록은 진행 — 부가정보이므로)
 async function wxForTrip(){
