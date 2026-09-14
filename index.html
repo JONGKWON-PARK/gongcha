@@ -301,6 +301,21 @@ section{padding:15px 16px}
 .gonow .gnmeta{font-size:11.5px;color:var(--dim);margin-top:2px}
 .gonow .gnbtn{flex:0 0 auto;padding:11px 16px;border:1px solid var(--amber);background:transparent;
  color:var(--amber);font-size:14px;font-weight:800;font-family:inherit;cursor:pointer}
+.bkbar{display:flex;align-items:center;gap:8px;padding:9px 11px;margin-top:9px;
+ background:rgba(255,176,32,.10);border:1px solid var(--amber);font-size:12px;color:var(--txt)}
+.bkbar span{flex:1;min-width:0}
+.bkbar button{padding:6px 11px;background:transparent;border:1px solid var(--amber);
+ color:var(--amber);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer}
+.bkbar button.x{border-color:var(--line);color:var(--dim)}
+.ctxbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 0 2px}
+.ctxbar .ci{font-size:11px;padding:3px 8px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.ctxbar .ci.hot{border-color:var(--amber);color:var(--amber)}
+.ctxbar .ci.rain{border-color:var(--occ);color:var(--occ)}
+.ctxbar .cibtn{margin-left:auto;font-size:11px;padding:3px 9px;background:transparent;
+ border:1px solid var(--line);color:var(--dim);font-family:inherit;cursor:pointer}
+.evtrow{display:flex;gap:5px;margin-bottom:6px}
+.evtrow input,.evtrow select{flex:1;min-width:0;padding:10px;background:var(--panel);
+ border:1px solid var(--line);color:var(--txt);font-family:inherit;font-size:13px}
 .savebar{position:sticky;bottom:0;background:var(--panel);padding-top:8px;margin-top:4px;
  border-top:1px solid var(--line);z-index:2}
 .savebar #setmsg{font-size:11.5px;color:var(--faint);text-align:center;margin:2px 0 6px;min-height:14px}
@@ -1011,6 +1026,13 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 </div>
 <div class="pane on" id="pane-drive">
 <div class="wx" id="wx" hidden></div>
+<div class="bkbar" id="bkbar" hidden></div>
+<div class="ctxbar" id="ctxbar">
+  <span class="ci" id="ci_day">-</span>
+  <span class="ci" id="ci_wx">날씨 -</span>
+  <span class="ci" id="ci_evt">행사 없음</span>
+  <button class="cibtn" id="ci_edit">행사</button>
+</div>
 <div class="strip mono">
   <div><div class="k">운행</div><div class="v" id="s1">0.0h</div></div>
   <div><div class="k">공차율</div><div class="v" id="s2">-</div></div>
@@ -1071,6 +1093,8 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   <div class="eyebrow"><span id="recl">가까운 대안 · 총 소요 순</span></div>
   <div id="recs"></div>
 </section>
+
+<section id="rrbox" hidden style="padding-top:0"></section>
 
 <section style="padding-top:0" id="minesec" hidden>
   <div class="eyebrow"><span id="minel">내 지점</span></div>
@@ -1133,7 +1157,8 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   <div class="sub2">실시간 소요시간 · 내 지점 관리</div>
   <label>TMAP appKey (실시간 소요시간)</label>
   <input id="key" placeholder="openapi.sk.com에서 무료 발급" autocomplete="off">
-  <label>공공데이터 인증키 (인천공항)</label>
+  <div id="holstat" class="note2" style="margin-bottom:8px"></div>
+  <label>공공데이터 인증키 (인천공항 · 기상청 · 특일)</label>
   <input id="airkey" placeholder="data.go.kr 일반 인증키" autocomplete="off" spellcheck="false">
   <div style="font-size:10.5px;color:var(--faint);margin:-4px 0 12px;line-height:1.5">
     비워두면 거리 기반 추정식을 씁니다. 경로안내 1일 1,000건 무료이며,
@@ -1181,6 +1206,30 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
    <div id="setmsg"></div>
    <button class="opt" id="setclose">저장하고 닫기</button>
   </div>
+</div></div>
+
+<div class="sheet" id="evt"><div class="card">
+  <div class="to">오늘의 행사</div>
+  <div class="sub2">운행 시작 시 한 번만 — 건너뛰어도 됩니다</div>
+  <div id="evt_presets" style="margin-bottom:8px"></div>
+  <div class="evtrow">
+    <select id="ev_tag">
+      <option>콘서트</option><option>스포츠경기</option><option>축제</option>
+      <option>대형행사/전시</option><option>시위·집회</option><option>기타</option>
+    </select>
+    <input id="ev_area" placeholder="지역 (잠실·고척·상암…)">
+  </div>
+  <div class="evtrow">
+    <input id="ev_time" type="time" placeholder="종료 예상">
+    <input id="ev_name" placeholder="이름 (선택)">
+  </div>
+  <div class="evtrow">
+    <button class="opt" id="ev_add" style="margin:0;text-align:center">추가</button>
+    <button class="opt" id="ev_preset" style="margin:0;text-align:center">프리셋 저장</button>
+  </div>
+  <div id="evt_list" style="margin-top:8px"></div>
+  <div class="savebar"><div id="evt_msg"></div>
+    <button class="opt" id="evt_close">닫기</button></div>
 </div></div>
 
 <div class="sheet" id="fuel"><div class="card">
@@ -1479,6 +1528,7 @@ function render(){
  const _am=(typeof airMode==='function')?airMode():null;
  if(_am){ airOverlay(_am); }
 
+ try{ routeDraw(); }catch(e){}
  const gonow=document.getElementById('gonow');
  const moving = vd.className.indexOf('move')>=0;
  if(moving && best){
@@ -3064,8 +3114,14 @@ document.getElementById('setclose').onclick=async()=>{
   await Store.set(KEY_CFG,CFG);
   await Store.set(KEY_API,apiKey);
   const _ak=document.getElementById('airkey');
-  if(_ak){ airKey=(_ak.value||'').replace(/[\s"'`]/g,''); _ak.value=airKey;
-           await Store.set(KEY_AIRK,airKey); }
+  if(_ak){ const before=airKey;
+           airKey=(_ak.value||'').replace(/[\s"'`]/g,''); _ak.value=airKey;
+           await Store.set(KEY_AIRK,airKey);
+           // 키가 새로 들어오면 공휴일·날씨를 즉시 받아온다
+           if(airKey&&airKey!==before){
+             holLoadYears().then(ctxDraw).catch(()=>{});
+             wxForTrip().then(x=>{ if(x){wxLast={ck:'set',v:x}; ctxDraw();} }).catch(()=>{});
+           } }
   const back=await Store.get(KEY_API);          // 실제 저장됐는지 재확인
   if(back!==apiKey) throw new Error('저장 확인 실패');
   msg.style.color='var(--occ)';
@@ -3101,6 +3157,266 @@ async function autoEta(force){
  await refreshEta(t,anchor);
 }
 
+
+
+/* ══════════ 상황 컨텍스트: 날씨 · 공휴일 · 행사 ══════════ */
+const KEY_HOL='gongcha:holidays', KEY_EVT='gongcha:events', KEY_WXC='gongcha:wxcache';
+let holidays={}, todayEvents=[], wxLast=null, evtPresets=[];
+const KEY_EVTP='gongcha:evtpresets';
+
+/* ── GPS → 기상청 격자 (Lambert Conformal Conic) ──
+   서울시청 60,127 · 부산시청 98,76 · 대구시청 89,91 로 검증 완료 */
+function kmaGrid(lat,lon){
+ const RE=6371.00877,GRID=5.0,SLAT1=30.0,SLAT2=60.0,OLON=126.0,OLAT=38.0,XO=43,YO=136;
+ const D=Math.PI/180, re=RE/GRID, s1=SLAT1*D, s2=SLAT2*D, ol=OLON*D, oa=OLAT*D;
+ const sn=Math.log(Math.cos(s1)/Math.cos(s2))/
+          Math.log(Math.tan(Math.PI*0.25+s2*0.5)/Math.tan(Math.PI*0.25+s1*0.5));
+ const sf=Math.pow(Math.tan(Math.PI*0.25+s1*0.5),sn)*Math.cos(s1)/sn;
+ const ro=re*sf/Math.pow(Math.tan(Math.PI*0.25+oa*0.5),sn);
+ const ra=re*sf/Math.pow(Math.tan(Math.PI*0.25+lat*D*0.5),sn);
+ let th=lon*D-ol;
+ if(th>Math.PI) th-=2*Math.PI;
+ if(th<-Math.PI) th+=2*Math.PI;
+ th*=sn;
+ return {nx:Math.floor(ra*Math.sin(th)+XO+0.5), ny:Math.floor(ro-ra*Math.cos(th)+YO+0.5)};
+}
+
+/* ── 날씨: 기상청 초단기실황 ── */
+const PTY_NAME={0:'없음',1:'비',2:'비/눈',3:'눈',5:'빗방울',6:'빗방울/눈',7:'눈날림'};
+function wxClass(o){
+ if(!o) return null;
+ const p=+o.pty||0, r=+o.rn1||0, t=o.t1h!=null?+o.t1h:null;
+ if(p===3||p===7) return '눈';
+ if(p===2||p===6) return '비/눈';
+ if(p===1||p===5) return r>=3?'강한비':'약한비';
+ if(t!=null&&t<=-5) return '혹한';
+ if(t!=null&&t>=33) return '혹서';
+ return o.sky==='흐림'?'흐림':'맑음';
+}
+async function wxFetch(la,lo){
+ if(!airKey) return null;
+ const g=kmaGrid(la,lo);
+ // 매시 정시 관측 · 약 40분 후 제공 → 40분 이전이면 직전 시각 사용
+ const n=new Date();
+ if(n.getMinutes()<40) n.setHours(n.getHours()-1);
+ const base=String(n.getHours()).padStart(2,'0')+'00';
+ const ymd=n.getFullYear()+String(n.getMonth()+1).padStart(2,'0')+String(n.getDate()).padStart(2,'0');
+ const ck=`${g.nx},${g.ny},${ymd},${base}`;
+ if(wxLast&&wxLast.ck===ck) return wxLast.v;
+ const u='https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst'+
+   `?serviceKey=${airKey}&numOfRows=20&pageNo=1&dataType=JSON`+
+   `&base_date=${ymd}&base_time=${base}&nx=${g.nx}&ny=${g.ny}`;
+ const r=await fetch(u); const t=await r.text();
+ let j; try{ j=JSON.parse(t); }catch(e){ throw new Error('형식오류'); }
+ const code=airDeep(j,'resultCode');
+ if(!(code==='00'||code===0||code==='0')) throw new Error(airDeep(j,'resultMsg')||'거부');
+ const it=airItems(j); const o={source:'auto'};
+ it.forEach(x=>{ const v=parseFloat(x.obsrValue);
+  if(x.category==='PTY') o.pty=v; if(x.category==='RN1') o.rn1=v;
+  if(x.category==='T1H') o.t1h=v;  if(x.category==='WSD') o.wsd=v;
+  if(x.category==='REH') o.reh=v; });
+ o.cls=wxClass(o); o.nx=g.nx; o.ny=g.ny; o.at=Date.now();
+ wxLast={ck,v:o}; try{ Store.set(KEY_WXC,{ck,v:o}); }catch(e){}
+ return o;
+}
+// 운행 기록에 붙일 날씨 (실패해도 기록은 진행 — 부가정보이므로)
+async function wxForTrip(){
+ if(!pos) return null;
+ try{ return await wxFetch(pos.la,pos.lo); }
+ catch(e){ return wxLast? {...wxLast.v,source:'carried'} : null; }
+}
+
+/* ── 공휴일: 한국천문연구원 특일정보 (연 1회 캐시) ── */
+async function holLoad(year){
+ if(holidays['_y'+year]) return;
+ const st=await Store.get(KEY_HOL);
+ if(st&&st['_y'+year]){ holidays=Object.assign(holidays,st); return; }
+ if(!airKey) return;
+ const got={};
+ for(let m=1;m<=12;m++){
+  try{
+   const u='https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo'+
+     `?serviceKey=${airKey}&solYear=${year}&solMonth=${String(m).padStart(2,'0')}&numOfRows=40&_type=json`;
+   const r=await fetch(u); const j=JSON.parse(await r.text());
+   airItems(j).forEach(x=>{ if(String(x.isHoliday).toUpperCase()==='Y')
+     got[String(x.locdate)]=x.dateName; });
+  }catch(e){}
+ }
+ if(Object.keys(got).length){
+  holidays=Object.assign(holidays,got); holidays['_y'+year]=1;
+  try{ await Store.set(KEY_HOL,holidays); }catch(e){}
+ }
+}
+// 올해와 내년을 함께 받는다. 12/31의 '연휴전날' 판정에 내년 1/1이 필요하다.
+async function holLoadYears(){
+ const y=new Date().getFullYear();
+ await holLoad(y);
+ try{ await holLoad(y+1); }catch(e){}      // 내년 자료가 아직 없으면 조용히 넘어간다
+}
+function holStatus(){
+ const out=[];
+ for(const y of [new Date().getFullYear(), new Date().getFullYear()+1]){
+  const n=Object.keys(holidays).filter(k=>/^\d{8}$/.test(k)&&k.slice(0,4)===String(y)).length;
+  out.push({year:y, loaded:!!holidays['_y'+y], count:n});
+ }
+ return out;
+}
+function ymdOf(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');}
+function isHol(d){ return !!holidays[ymdOf(d)]; }
+function dayType(d){
+ const t=d||new Date(), w=t.getDay();
+ const prev=new Date(t.getTime()-86400000), next=new Date(t.getTime()+86400000);
+ const off=x=>isHol(x)||x.getDay()===0||x.getDay()===6;
+ if(isHol(t)){ return off(prev)&&off(next)?'연휴중':'공휴일'; }
+ if(w===6) return '토'; if(w===0) return '일';
+ if(off(next)) return '연휴전날';
+ if(off(prev)) return '연휴다음날';
+ return '평일';
+}
+function seasonTag(d){
+ const t=d||new Date(), m=t.getMonth()+1, day=t.getDate();
+ if(m===4||(m===3&&day>=25)) return '벚꽃';
+ if(m===10||(m===11&&day<=15)) return '단풍';
+ if((m===12&&day>=20)||(m===1&&day<=2)) return '연말';
+ return null;
+}
+function dayContext(d){
+ const t=d||new Date();
+ return {is_holiday:isHol(t), holiday_name:holidays[ymdOf(t)]||null,
+         day_type:dayType(t), season_tag:seasonTag(t)};
+}
+
+
+/* ── 컨텍스트 바 렌더 ── */
+function holDraw(){
+ const el=document.getElementById('holstat'); if(!el) return;
+ const st=holStatus();
+ el.innerHTML='공휴일 데이터 · '+st.map(x=>
+   `${x.year}년 <b style="color:${x.count?'var(--occ)':'var(--faint)'}">${x.count?x.count+'일':'미저장'}</b>`
+  ).join(' · ')+(airKey?'':' <span style="color:var(--faint)">(인증키 필요)</span>');
+}
+function ctxDraw(){
+ holDraw();
+ const dc=dayContext();
+ const dEl=document.getElementById('ci_day'); if(!dEl) return;
+ dEl.textContent=dc.day_type+(dc.holiday_name?' · '+dc.holiday_name:'')+
+                 (dc.season_tag?' · '+dc.season_tag:'');
+ dEl.className='ci'+(dc.day_type!=='평일'?' hot':'');
+ const w=wxLast&&wxLast.v, wEl=document.getElementById('ci_wx');
+ if(w){ const rain=/비|눈/.test(w.cls||'');
+   wEl.textContent=(w.cls||'-')+(w.t1h!=null?' '+w.t1h.toFixed(0)+'°':'')+
+                   (w.rn1>0?' '+w.rn1+'mm':'');
+   wEl.className='ci'+(rain?' rain':''); }
+ else { wEl.textContent=airKey?'날씨 조회중':'날씨 -'; wEl.className='ci'; }
+ const eEl=document.getElementById('ci_evt');
+ eEl.textContent=todayEvents.length?
+   todayEvents.map(e=>e.area+' '+e.tag+(e.end_time?' '+e.end_time:'')).join(', '):'행사 없음';
+ eEl.className='ci'+(todayEvents.length?' hot':'');
+}
+function evtDraw(){
+ const l=document.getElementById('evt_list');
+ if(l) l.innerHTML=todayEvents.length?todayEvents.map((e,i)=>
+  `<div class="pick"><div class="body"><div class="nm">${e.area} · ${e.tag}</div>`+
+  `<div class="meta mono">${e.end_time||'종료시각 미정'}${e.name?' · '+e.name:''}</div></div>`+
+  `<button class="go" data-ev="${i}">삭제</button></div>`).join('')
+  :'<div class="empty" style="padding:12px">등록된 행사가 없습니다.</div>';
+ if(l) l.querySelectorAll('[data-ev]').forEach(b=>b.onclick=async()=>{
+   todayEvents.splice(+b.dataset.ev,1); await Store.set(KEY_EVT,{d:bizDate(),v:todayEvents});
+   evtDraw(); ctxDraw(); });
+ const pv=document.getElementById('evt_presets');
+ if(pv) pv.innerHTML=evtPresets.length?
+  '<div class="tglab">프리셋</div><div class="tg">'+evtPresets.map((e,i)=>
+   `<button data-pr="${i}">${e.area} ${e.tag}${e.end_time?' '+e.end_time:''}</button>`).join('')+'</div>':'';
+ if(pv) pv.querySelectorAll('[data-pr]').forEach(b=>b.onclick=async()=>{
+   todayEvents.push({...evtPresets[+b.dataset.pr]});
+   await Store.set(KEY_EVT,{d:bizDate(),v:todayEvents}); evtDraw(); ctxDraw(); });
+}
+
+/* ── 매일 자동 백업 ──
+   업무일이 바뀌면 지난 업무일 전체를 JSON으로 내려받아 보관한다. */
+const KEY_LASTBK='gongcha:lastbackup';
+function ctxSnapshot(){
+ return {app:'gongcha', exported:new Date().toISOString(), bizdate:bizDate(),
+   daycontext:dayContext(), events:todayEvents,
+   weather_last:wxLast?wxLast.v:null,
+   trips:trips, odo:odo, obs:obs, airlog:airLog,
+   history:(typeof history!=='undefined'?history:[]),
+   expenses:(typeof exps!=='undefined'?exps:null),
+   config:(typeof CFG!=='undefined'?CFG:null)};
+}
+function dlJSON(obj,name){
+ try{
+  const b=new Blob([JSON.stringify(obj,null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1500);
+  return true;
+ }catch(e){ return false; }
+}
+// 브라우저는 사용자가 누르지 않은 다운로드를 막는 경우가 많다.
+// 그래서 자동으로 내려받으려 시도하지 않고, 눈에 띄는 알림줄을 띄워
+// 한 번 누르면 저장되게 한다. 저장 전까지 알림은 사라지지 않는다.
+let bkPending=null;
+async function autoBackup(){
+ const today=bizDate();
+ const last=await Store.get(KEY_LASTBK);
+ if(!last){ await Store.set(KEY_LASTBK,today); return; }   // 첫 실행일은 기준만 잡는다
+ if(last===today) return;                                  // 오늘 것은 아직 진행 중
+ const arch=await Store.get('gongcha:'+last);              // 지난 업무일 기록
+ if(!arch||!arch.length){ await Store.set(KEY_LASTBK,today); return; }
+ bkPending={date:last, data:arch};
+ bkDraw();
+}
+function bkDraw(){
+ const el=document.getElementById('bkbar'); if(!el) return;
+ if(!bkPending){ el.hidden=true; return; }
+ el.hidden=false;
+ el.innerHTML=`<span><b>${bkPending.date}</b> 운행 기록 ${bkPending.data.length}건 · 백업 대기</span>`+
+              `<button id="bk_go">저장</button><button id="bk_skip" class="x">나중에</button>`;
+ document.getElementById('bk_go').onclick=async()=>{
+  const snap=ctxSnapshot(); snap.bizdate=bkPending.date; snap.trips=bkPending.data;
+  if(dlJSON(snap,`gongcha_${bkPending.date}.json`)){
+   await Store.set(KEY_LASTBK,bizDate()); bkPending=null; bkDraw();
+  }else{ el.querySelector('span').innerHTML='<b style="color:var(--vac)">저장 실패</b> — 운행 탭 하단 내보내기를 쓰세요'; }
+ };
+ document.getElementById('bk_skip').onclick=()=>{ el.hidden=true; };  // 다음 실행 때 다시 뜬다
+}
+
+
+/* ══════════ 귀로 루트 (한티협 베테랑 귀로콜 포인트) ══════════
+   서울 밖에서 하차했을 때 "어디를 거쳐 서울로 복귀하면 중간에 콜을 받을 수
+   있는가". 기존 베테랑 지점(서울 334곳 · 대기 장소)과 성격이 다르다.
+   좌표는 지역 감지용 대략값이며, 경로는 텍스트 안내다. */
+const RROUTE = [{"a":"남양주 다산동","la":37.6136,"lo":127.1516,"v":"현대아울렛 주변 배회"},{"a":"호평·평내","la":37.654,"lo":127.24,"v":"평내호평역 먹자골목"},{"a":"마석·화도","la":37.647,"lo":127.308,"v":"평내호평역(평내이마트) · 평내호평역 건너 먹자골목"},{"a":"진접","la":37.738,"lo":127.19,"v":"퇴계원역 → 별내·갈매 쪽 또는 구리 돌다리사거리"},{"a":"양평·용문","la":37.49,"lo":127.595,"v":"덕소 → 다산 → 구리 → 미사역"},{"a":"하남시","la":37.5626,"lo":127.193,"v":"미사역 식당가·오피스텔 배회"},{"a":"의정부시","la":37.7383,"lo":127.0458,"v":"의정부역 동부광장 건너편 로데오거리 / 서부광장 건너편 모텔촌 먹자골목 / 회룡역 먹자골목 / 민락동 메가박스 먹자골목 / 송산2동 주민센터"},{"a":"동두천·지행","la":37.894,"lo":127.055,"v":"포천 → 의정부역으로"},{"a":"일산","la":37.6919,"lo":126.7657,"v":"탄현역 → 암센터 → 라페스타 → 백석역"},{"a":"일산서구","la":37.675,"lo":126.75,"v":"대화역 주엽역 라페스타"},{"a":"화정역","la":37.6345,"lo":126.8324,"v":"이마트 화정점"},{"a":"삼송","la":37.6531,"lo":126.8955,"v":"삼송역"},{"a":"고양시 식사동","la":37.68,"lo":126.81,"v":"정발산역 → 마두역"},{"a":"파주시","la":37.76,"lo":126.775,"v":"금촌역 → 야당역 → 탄현SBS 거쳐 라페스타 / 운정역·야당역 / 대화역·주엽역·라페스타"},{"a":"김포시 통진읍","la":37.669,"lo":126.62,"v":"구래동 → 장기 → 사우동 → 고촌역","w":"관외영업 신고 많음 — 한곳에 5분 이상 정차 금지. 허위콜 많음 — 노란 직접결제콜은 전화 먼저, 통화 안 되면 손님신고 취소"},{"a":"계양역","la":37.571,"lo":126.736,"v":"아라비안나이트"},{"a":"영종도 하늘도시","la":37.493,"lo":126.503,"v":"계양 아라비안나이트"},{"a":"청라 국제도시","la":37.534,"lo":126.642,"v":"청라 홈플러스 → 주안역 → 부평역 → 상동역"},{"a":"인천 주안","la":37.465,"lo":126.68,"v":"제물포역 → 인천성모병원 거쳐 → 송내 → 중동역 → 상동역 → 서울로"},{"a":"인천 주안역","la":37.465,"lo":126.68,"v":"간석오거리 → 부평역 → 중동 → 고려호텔 주변 → 상동역"},{"a":"인천 간석동","la":37.465,"lo":126.705,"v":"미추홀 → 인천시청 → 인천터미널"},{"a":"인천 남동구","la":37.447,"lo":126.731,"v":"구월동 로데오거리 / 인천터미널 → 인천시청"},{"a":"인천 남동공단","la":37.401,"lo":126.72,"v":"계양 아라비안나이트 방향으로 천천히 이동"},{"a":"인천 연수동","la":37.41,"lo":126.678,"v":"인천대공원 → 주안역 → 부평 → 상동역"},{"a":"인천 인하대","la":37.45,"lo":126.654,"v":"인천법원 앞 → 주안역"},{"a":"인천항","la":37.455,"lo":126.615,"v":"미추홀 → 주안역 → 부천 쪽"},{"a":"송도","la":37.383,"lo":126.643,"v":"해양경찰청 → 삼성바이오로직스"},{"a":"인천공항","la":37.4491,"lo":126.4509,"v":"대기하면 최소 3~5시간. 대기 않고 이동하려면 청라 홈플러스 / 송도 해양경찰청 주변 / 김포공항·마곡역·발산역","w":"베테랑 기준 대기 3~5시간 — 시간당 수익을 보려면 이동이 유리할 수 있음"},{"a":"부천시","la":37.5035,"lo":126.766,"v":"고려호텔 → 중동역 → 상동역"},{"a":"시흥시","la":37.38,"lo":126.803,"v":"시흥시청 / 은행동 주변"},{"a":"시흥시 정왕동","la":37.345,"lo":126.74,"v":"이마트 → 오이도역"},{"a":"시흥시 월곶동","la":37.39,"lo":126.74,"v":"배곧 대기 또는 광명·부천 범박동으로 이동"},{"a":"안산","la":37.322,"lo":126.831,"v":"중앙역 → 고대병원 → 푸르지오3차 인근 먹자골목"},{"a":"안양시","la":37.386,"lo":126.932,"v":"만안구청 사거리 → 평촌역 부근"},{"a":"군포경찰서","la":37.359,"lo":126.935,"v":"인덕원역 → 범계역 쪽으로 이동"},{"a":"군포시 산본동","la":37.358,"lo":126.931,"v":"산본 롯데백화점 → 평촌역 또는 인덕원역 사거리 → 성남 방향"},{"a":"의왕시","la":37.345,"lo":126.968,"v":"범계 → 평촌역 → 인덕원역 → 과천"},{"a":"수원시 영통","la":37.2596,"lo":127.0466,"v":"영통 홈플러스 → 갤러리아백화점 → 삼성SDS 삼거리"},{"a":"수원시 인계동","la":37.2636,"lo":127.0286,"v":"수원시청역 주변 → 삼성디지털단지 → 광교중앙역"},{"a":"수원시 권선구","la":37.258,"lo":126.972,"v":"인계동 사거리(수원시청역)에서 선택","alt":[{"k":"수원역 선택","t":"의왕 → 범계 → 평촌 → 인덕원역 → 과천"},{"k":"광교역 선택","t":"오리 → 미금 → 정자 → 판교"}]},{"a":"수원시 장안구","la":37.301,"lo":126.992,"v":"의왕 → 범계 → 평촌 → 인덕원역 → 과천 거쳐 서울로"},{"a":"화성 동탄·병점","la":37.201,"lo":127.073,"v":"동탄북광장 → 수원삼성 → 인계동 에서 수원역 또는 광교중앙역","alt":[{"k":"수원역 선택","t":"의왕 → 범계"},{"k":"광교역 선택","t":"오리 → 미금 → 정자 → 판교"}]},{"a":"동탄","la":37.201,"lo":127.073,"v":"내비로 동탄1동 주민센터 찍고 → 동탄 북광장 주변 배회"},{"a":"오산시","la":37.15,"lo":127.077,"v":"오산 호박나이트 앞 → 동탄북광장 → 삼성전자 → 수원역 → 인계동사거리 → 광교중앙역"},{"a":"평택시","la":36.9921,"lo":127.1129,"v":"오산시청 → 화성 메타폴리스 → 수원역 또는 인계동(수원시청역) → 광교중앙역(경기도청)"},{"a":"판교","la":37.395,"lo":127.111,"v":"판교역 삼평동 주변 — 판교역 건너편 먹자골목 주변을 배회"},{"a":"야탑","la":37.411,"lo":127.129,"v":"야탑역 먹자골목 → 판교 또는 성남 모란 → 서울로"},{"a":"용인 수지","la":37.322,"lo":127.098,"v":"수지구청역 → 오리역 → 정자역 → 판교 → 서울로"},{"a":"용인 처인구","la":37.234,"lo":127.201,"v":"기흥 → 죽전 → 오리역 → 정자역"},{"a":"경기 광주시","la":37.4292,"lo":127.255,"v":"경안동 우체국"},{"a":"광주시 초월읍","la":37.345,"lo":127.276,"v":"광주 이마트 거쳐 → 성남 상대원 거쳐 → 모란 또는 판교"},{"a":"여주시","la":37.2983,"lo":127.637,"v":"광주 이마트 맞은편 먹자사거리 → 판교나 모란역 → 송파로"}];
+function nearRoute(la,lo,maxKm){
+ if(la==null) return null;
+ let b=null,bd=1e9;
+ for(const r of RROUTE){ const d=dist(la,lo,r.la,r.lo); if(d<bd){bd=d;b=r;} }
+ return (b&&bd<=(maxKm||12))?{r:b,km:bd}:null;
+}
+function routeDraw(){
+ const box=document.getElementById('rrbox'); if(!box) return;
+ // 등록된 귀로 지역에 가까우면 표시한다. 다산·하남처럼 서울과 붙어 있어도
+ // 행정구역상 경기도이고 귀로 경로가 다르므로 서울 거리로 막지 않는다.
+ const hit = pos ? nearRoute(pos.la,pos.lo,8) : null;
+ if(!hit){ box.hidden=true; return; }
+ box.hidden=false;
+ const r=hit.r;
+ box.innerHTML =
+  `<div class="eyebrow"><span>귀로 루트</span><span style="letter-spacing:0">한티협 베테랑</span></div>`+
+  `<div class="card">`+
+  `<div class="nm" style="font-size:15px;font-weight:800">${r.a}`+
+   `<span style="font-size:11px;color:var(--dim);font-weight:400"> · ${hit.km.toFixed(1)}km</span></div>`+
+  `<div class="meta" style="margin-top:6px;line-height:1.6;color:var(--txt)">${r.v}</div>`+
+  (r.alt?r.alt.map(x=>
+    `<div class="meta" style="margin-top:5px;color:var(--dim)">`+
+    `<b style="color:var(--amber)">${x.k}</b> → ${x.t}</div>`).join(''):'')+
+  (r.w?`<div class="note2" style="margin-top:7px;color:var(--vac)">${r.w}</div>`:'')+
+  `<div class="note2" style="margin-top:7px;color:var(--faint)">`+
+   `콜이 많이 발생하는 지역 위주입니다. 카카오T 수요지도를 함께 보며 주변을 배회하세요.</div>`+
+  `</div>`;
+}
 
 /* ══════════ 공항 모듈 ══════════ */
 const AIRPORTS={T1:{n:'제1터미널',la:37.4491,lo:126.4509,term:['P01','P02']},
@@ -3560,8 +3876,12 @@ tog.onclick=async()=>{
   }
   if(wakeSupported()&&!wakeLock){wantWake=true;wakeOn().then(drawWake);Store.set(KEY_WAKE,1);}
   const nt={start:Date.now(),from:cur?cur.n:null,fla:pos?.la,flo:pos?.lo,
-   wait:cur&&valid(h)?cur.w[idx(h)]:null};
+   wait:cur&&valid(h)?cur.w[idx(h)]:null,
+   daycontext:dayContext(), events:todayEvents.slice()};
   trips.push(nt);
+  // 날씨는 건별로 기록한다 (비는 오다 그치므로 하루 단위로는 못 잡는다).
+  // 부가정보이므로 실패해도 운행 기록은 그대로 저장된다.
+  wxForTrip().then(w=>{ if(w){ nt.weather=w; Store.set(KEY,trips);} }).catch(()=>{});
   if(pos) revGeo(pos.la,pos.lo).then(g=>{if(g){nt.from=g.dong||nt.from;nt.fromAddr=g.bldg||g.road||g.full;
    Store.set(KEY,trips);render();}});
   tog.textContent='승객 하차';tog.classList.add('occ');
@@ -3681,6 +4001,46 @@ document.getElementById('clr').onclick=async()=>{
  try{ airKey=(await Store.get(KEY_AIRK))||''; airLog=(await Store.get(KEY_AIRLOG))||[];
       const _ak=document.getElementById('airkey'); if(_ak) _ak.value=airKey;
  }catch(e){ console.warn('공항 설정 로드 실패',e.message); }
+ // 컨텍스트(날씨·공휴일·행사) 로드
+ try{
+  const ev=await Store.get(KEY_EVT);
+  todayEvents=(ev&&ev.d===bizDate())?ev.v:[];
+  evtPresets=(await Store.get(KEY_EVTP))||[];
+  const wc=await Store.get(KEY_WXC); if(wc) wxLast=wc;
+  holidays=(await Store.get(KEY_HOL))||{};
+  ctxDraw(); evtDraw();
+  holLoadYears().then(ctxDraw);
+  if(pos||airKey) wxForTrip().then(w=>{ if(w){wxLast={ck:'boot',v:w}; ctxDraw();} });
+  autoBackup();
+ }catch(e){ console.warn('컨텍스트 로드 실패',e.message); }
+
+ const _sh=(id,on)=>{const e=document.getElementById(id); if(e) e.classList[on?'add':'remove']('on');};
+ const _b2=(id,fn)=>{const e=document.getElementById(id); if(e) e.onclick=fn;};
+ _b2('ci_edit',()=>{ evtDraw(); _sh('evt',true); });
+ _b2('evt_close',()=>_sh('evt',false));
+ _b2('ev_add',async()=>{
+   const a=document.getElementById('ev_area').value.trim();
+   if(!a){document.getElementById('evt_msg').textContent='지역을 입력하세요';return;}
+   todayEvents.push({tag:document.getElementById('ev_tag').value,area:a,
+     end_time:document.getElementById('ev_time').value||'',
+     name:document.getElementById('ev_name').value.trim()});
+   await Store.set(KEY_EVT,{d:bizDate(),v:todayEvents});
+   document.getElementById('ev_area').value='';
+   document.getElementById('ev_name').value='';
+   document.getElementById('evt_msg').textContent='';
+   evtDraw(); ctxDraw();
+ });
+ _b2('ev_preset',async()=>{
+   const a=document.getElementById('ev_area').value.trim();
+   if(!a){document.getElementById('evt_msg').textContent='지역을 입력하세요';return;}
+   evtPresets.push({tag:document.getElementById('ev_tag').value,area:a,
+     end_time:document.getElementById('ev_time').value||'',name:''});
+   if(evtPresets.length>8) evtPresets.shift();
+   await Store.set(KEY_EVTP,evtPresets);
+   document.getElementById('evt_msg').textContent='프리셋 저장됨';
+   evtDraw();
+ });
+
  // 공항 탭 이벤트
  const _bind=(id,fn)=>{const e=document.getElementById(id); if(e) e.onclick=fn;};
  const _tm=document.getElementById('air_term');
@@ -3725,7 +4085,7 @@ document.getElementById('clr').onclick=async()=>{
    document.getElementById('air_in_f').value='';
    airLogDraw(); renderAir();
  });
- locate();render();setInterval(render,30000);
+ locate();render();ctxDraw();routeDraw();setInterval(()=>{render();routeDraw();},30000);setInterval(ctxDraw,300000);
  setTimeout(weeklySuggest,4000);
  setTimeout(loadWx,3000); setInterval(loadWx,1800000);})();
 </script></body></html>
