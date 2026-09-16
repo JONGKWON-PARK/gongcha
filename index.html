@@ -288,6 +288,10 @@ section{padding:15px 16px}
 .big{width:100%;padding:17px;border:0;font-size:17px;font-weight:800;letter-spacing:.5px;
  color:#0A0A0B;background:var(--vac);cursor:pointer;font-family:inherit}
 .big.occ{background:var(--occ)} .big:active{opacity:.82}
+.call{width:100%;padding:11px;margin-bottom:7px;background:transparent;border:1px solid var(--amber);
+ color:var(--amber);font-size:14px;font-weight:800;font-family:inherit;cursor:pointer}
+.call.on{background:rgba(255,176,32,.14)}
+.call:active{opacity:.82}
 .hint{text-align:center;font-size:10.5px;color:var(--faint);margin-top:7px}
 
 .sheet{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.75);display:none;align-items:flex-end;justify-content:center}
@@ -953,6 +957,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 <div class="pane" id="pane-book">
   <section>
     <div class="eyebrow"><span>예약 등록</span></div>
+    <button class="opt" id="bk_demo" style="margin-bottom:7px;text-align:center;font-size:13px;padding:9px">예시 넣어보기</button>
     <textarea id="bk_raw" placeholder="고객 메시지를 붙여넣으세요&#10;&#10;카카오톡 · 문자 · 이메일 · WhatsApp 어디서든&#10;날짜·시간·출발·도착·인원을 자동으로 찾아냅니다"></textarea>
     <div class="bkform" id="bk_form" hidden>
       <div class="fr"><label>날짜</label><input id="bk_d" type="date"></div>
@@ -962,6 +967,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
       <div class="fr"><label>고객</label><input id="bk_name" placeholder="이름"></div>
       <div class="fr"><label>연락처</label><input id="bk_tel" placeholder="전화·WhatsApp"></div>
       <div class="fr"><label>인원</label><input id="bk_pax" type="number" inputmode="numeric" placeholder="명"></div>
+      <div class="fr"><label>짐</label><input id="bk_bag" type="number" inputmode="numeric" placeholder="개"></div>
       <div class="fr"><label>예상 요금</label><input id="bk_fare" type="number" inputmode="numeric" placeholder="원"></div>
       <div class="fr"><label>소요(분)</label><input id="bk_dur" type="number" inputmode="numeric" placeholder="분"></div>
       <div class="fr"><label>메모</label><input id="bk_memo" placeholder="메모 (선택)"></div>
@@ -1131,6 +1137,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 </div>
 
 <div class="dock">
+  <button class="call" id="callbtn" hidden>콜 받음</button>
   <button class="big" id="tog">승객 탑승</button>
   <div class="hint" id="hint">빈차 · 손님을 태우면 누르세요</div>
 </div>
@@ -1364,6 +1371,17 @@ let KEY='gongcha:'+new Date().toISOString().slice(0,10);
 let KEY_ODO='gongcha:odo';
 const KEY_HIST='gongcha:history';
 let odo={total:0,paid:0}, history=[], tripArchive=[];
+// 공차 구간(하차→다음 승차) 실주행거리. 하차 때 0으로 시작해 승차 때 그 운행에 붙인다.
+let deadOdo=0, deadFrom=null;
+// 콜 수신 시점 기록. 하차 후 어느 방향으로 배회하다 콜을 받았는지 남긴다.
+let callPt=null, missedCalls=[];
+const DIR8=['북','북동','동','남동','남','남서','서','북서'];
+function bearing(la1,lo1,la2,lo2){           // 0~360도 (북=0)
+ const R=Math.PI/180, y=Math.sin((lo2-lo1)*R)*Math.cos(la2*R);
+ const x=Math.cos(la1*R)*Math.sin(la2*R)-Math.sin(la1*R)*Math.cos(la2*R)*Math.cos((lo2-lo1)*R);
+ return (Math.atan2(y,x)/R+360)%360;
+}
+function dir8(deg){ return DIR8[Math.round(deg/45)%8]; }
 const KEY_ARCH='gongcha:archive';
 const idx=h=>h-H0, valid=h=>h>=H0&&h<=H1;
 const fmt=n=>n==null?'-':n.toLocaleString('ko-KR');
@@ -1397,7 +1415,7 @@ function locate(){
    const d=dist(lastFix.la,lastFix.lo,np.la,np.lo);
    if(d>0.02 && d<2){
     odo.total+=d;
-    if(occupied) odo.paid+=d;
+    if(occupied) odo.paid+=d; else deadOdo+=d;   // 빈차 주행 = 공차 이동
     if(Date.now()-odoSaveT>60000){odoSaveT=Date.now();Store.set(KEY_ODO,odo);}
    }
   }
@@ -1406,7 +1424,9 @@ function locate(){
   const n=nearest(pos.la,pos.lo);
   // 서울 지점 12km 이내면 그 지점, 아니면 현재 위치 기반 가상 지점
   cur = n.km>50 ? offGrid(pos.la,pos.lo) : n.g;
-  render();},()=>fallback(),
+  render();
+  try{ routeDraw(); }catch(e){}
+  try{ drawCall(); }catch(e){}},()=>fallback(),
   {enableHighAccuracy:true,maximumAge:5000,timeout:12000});}
 function fallback(){cur=cur||G.find(g=>g.g==='송파구')||G[0];pos={la:cur.la,lo:cur.lo};render();}
 
@@ -1452,9 +1472,38 @@ function render(){
 
  if(!anchor){vd.className='verdict na';vt.textContent='';vc.textContent='서울 밖이거나 위치 미확인';
   vw.textContent='GPS 신호를 확인해주세요.';document.getElementById('recs').innerHTML='';stats();return;}
- if(!valid(h)){vd.className='verdict na';vt.textContent='';vc.textContent='심야 데이터 없음';
-  vw.innerHTML='00~04시는 통계 추정 신뢰도가 낮아 표시하지 않습니다. 아래 베테랑 지점을 참고하세요.';
-  document.getElementById('recs').innerHTML='';renderVet(anchor,nowH,25);stats();return;}
+ if(!valid(h)){
+  // 심야: 공공통계는 없지만 베테랑·강사·내 지점·내 실측은 24시간 자료다.
+  const nl=unifiedNight(anchor,h,25); lastList=nl;
+  const best=nl[0];
+  vt.innerHTML='심야 <span class="live off">24시간 자료</span>';
+  if(best){
+   vd.className='verdict move';
+   vc.textContent=best.nm+'으로';
+   vw.innerHTML=`${best.km.toFixed(1)}km · 이동 <b>${best.move.toFixed(0)}분</b>${best.live?'◉':''}`+
+    (best.wait!=null?` + 내 실측 대기 <b>${best.wait.toFixed(0)}분</b> (${best.obsN}회)`:'')+
+    `<br><span style="color:var(--dim)">${best.extra||''} · 이 시각 후보 ${nl.length}곳</span>`+
+    `<br><span style="color:var(--faint)">00~04시는 공공 대기통계가 없어 베테랑·강사 지점과 내 실측으로만 순위를 냅니다.</span>`;
+  }else{
+   vd.className='verdict na'; vc.textContent='이 시각 추천 지점 없음';
+   vw.innerHTML='반경 안에 심야 등록 지점이 없습니다. 아래 베테랑 목록을 참고하세요.';
+  }
+  document.getElementById('recs').innerHTML = nl.length ? nl.map((x,n)=>`
+   <div class="pick t-${x.tier}">
+    <div class="idx mono">${x.tag||(n+1)}</div>
+    <div class="body"><div class="nm">${x.nm}<span style="font-size:11px;color:var(--dim);font-weight:400"> ${x.gu}</span></div>
+     <div class="meta mono">${x.km.toFixed(1)}km · 이동 ${x.move.toFixed(0)}분${x.live?'◉':''}`+
+     (x.wait!=null?` + 대기 ${x.wait.toFixed(0)}분<span style="color:var(--occ)">◇${x.obsN}</span>`:' · 대기 통계 없음')+
+     `</div></div>
+    <div style="text-align:right;margin-right:2px">`+
+     (x.total!=null?`<div class="num mono">${x.total.toFixed(0)}</div><div class="unit">분</div>`
+                   :`<div class="num mono" style="font-size:15px;color:var(--dim)">${x.move.toFixed(0)}</div><div class="unit">이동</div>`)+
+    `</div>
+    <button class="go" data-i="${n}">길찾기</button>
+   </div>`).join('') : '';
+  document.querySelectorAll('.go[data-i]').forEach(b=>{const x=lastList[+b.dataset.i];
+   b.onclick=()=>openNav({n:x.nm,g:x.gu,la:x.la,lo:x.lo,w:null,p:null,f:x.f,vet:x.extra});});
+  renderVet(anchor,nowH,25);stats();return;}
 
  // ── 서울 밖(공개통계 없는 지역): 실측 학습 기반 표시 ──
  if(isOff(anchor)){
@@ -1529,6 +1578,7 @@ function render(){
  if(_am){ airOverlay(_am); }
 
  try{ routeDraw(); }catch(e){}
+ try{ drawCall(); }catch(e){}
  const gonow=document.getElementById('gonow');
  const moving = vd.className.indexOf('move')>=0;
  if(moving && best){
@@ -1906,8 +1956,40 @@ function searchRadius(anchor){
  if(n.km<=4) return 6;                 // 도심
  return Math.min(40, Math.max(12, n.km*2.2));   // 외곽일수록 넓게
 }
+/* 심야(00~04) 전용 후보 ──
+   공공통계 w[]는 05~23시만 있다. 그러나 베테랑 334곳(00시 105곳·01시 97곳)과
+   강사 26곳, 내 지점, 내 실측은 24시간 자료다. 통계가 없다고 추천을 비우지 않고
+   이 네 가지로 순위를 낸다. 대기시간은 내 실측이 있을 때만 쓴다. */
+function unifiedNight(anchor,h,spd){
+ const out=[], seen={};
+ // 심야는 등록 지점 자체가 적다(02시 전체 42곳). 낮과 같은 반경을 쓰면
+ // 외곽에서 후보가 0곳이 되므로, 후보가 찰 때까지 단계적으로 넓힌다.
+ let RAD=Math.max(searchRadius(anchor),10);
+ const add=(nm,gu,la,lo,tier,tag,extra)=>{
+  const k=gu+'|'+nm; if(seen[k])return; seen[k]=1;
+  const km=dist(anchor.la,anchor.lo,la,lo); if(km>RAD) return;
+  const mv=moveMin(anchor,{la,lo},spd);
+  const ng=nearGrid(la,lo);
+  const st=ng?obsStat(ng.g,ng.n,h):null;          // 실측은 24시간 쌓인다
+  const wait=(st&&st.n>=3)?st.mean:null;
+  // 실측이 있으면 총 소요로, 없으면 이동시간을 지점 등급으로 나눠 정렬한다
+  const score=(wait!=null)?(mv.m+wait):(mv.m/TIER[tier]);
+  out.push({nm,gu,la,lo,tier,tag,extra,km,move:mv.m,live:mv.live,
+   raw:wait, obsN:st?st.n:0, learned:!!(st&&st.n>=3), cv:st?st.cv:null, zb:1,
+   wait:wait, total:(wait!=null)?(mv.m+wait):null, score, night:true,
+   f:ng?ng.f:null, c:null, p:null});
+ };
+ const fill=()=>{
+  mySpots.filter(v=>v.h.includes(h)).forEach(v=>add(v.n,'내 지점',v.la,v.lo,'mine','◆',v.r+'시'));
+  SPOT.forEach(v=>add(v.n,v.g,v.la,v.lo,v.w===3?'s3':'s2',v.w===3?'★★★':'★★',v.w===3?'강사 TOP10':'강사 추천'));
+  VET.filter(v=>v.h.includes(h)).forEach(v=>add(v.n,v.g,v.la,v.lo,'vet','★',v.r+'시'));
+ };
+ fill();
+ for(const r of [15,25,40]){ if(out.length>=3) break; RAD=r; fill(); }
+ return out.sort((a,b)=>a.score-b.score).slice(0,8);
+}
 function unified(anchor,h,spd){
- if(!valid(h)) return [];
+ if(!valid(h)) return unifiedNight(anchor,h,spd);
  const i=idx(h), out=[], seen={};
  const RAD=searchRadius(anchor);
  const push=(nm,gu,la,lo,tier,tag,extra)=>{
@@ -3253,21 +3335,32 @@ async function holLoad(year){
  const st=await Store.get(KEY_HOL);
  if(st&&st['_y'+year]){ holidays=Object.assign(holidays,st); return; }
  if(!airKey) return;
+ const BASE='https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo';
+ // 공식 가이드: ServiceKey(대문자 S), solMonth는 선택 항목이다.
+ // 그래서 연 단위로 한 번에 받고, 비면 월별로 나눠 다시 시도한다.
+ const pull=async(qs)=>{
+  const r=await fetch(BASE+'?'+qs+'&ServiceKey='+airKey+'&_type=json');
+  const t=await r.text();
+  let j; try{ j=JSON.parse(t); }catch(e){ return null; }   // XML로 오면 무시
+  const code=airDeep(j,'resultCode');
+  if(!(code==='00'||code===0||code==='0')) return null;
+  return airItems(j);
+ };
  const got={};
- for(let m=1;m<=12;m++){
-  try{
-   const u='https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo'+
-     `?serviceKey=${airKey}&solYear=${year}&solMonth=${String(m).padStart(2,'0')}&numOfRows=40&_type=json`;
-   const r=await fetch(u); const j=JSON.parse(await r.text());
-   airItems(j).forEach(x=>{ if(String(x.isHoliday).toUpperCase()==='Y')
-     got[String(x.locdate)]=x.dateName; });
-  }catch(e){}
+ const take=rows=>rows&&rows.forEach(x=>{
+   if(String(x.isHoliday).toUpperCase()==='Y') got[String(x.locdate)]=x.dateName; });
+ try{ take(await pull(`solYear=${year}&numOfRows=100`)); }catch(e){}
+ if(Object.keys(got).length<3){                 // 연 단위가 안 되면 월별로
+  for(let m=1;m<=12;m++){
+   try{ take(await pull(`solYear=${year}&solMonth=${String(m).padStart(2,'0')}&numOfRows=40`)); }catch(e){}
+  }
  }
  if(Object.keys(got).length){
   holidays=Object.assign(holidays,got); holidays['_y'+year]=1;
   try{ await Store.set(KEY_HOL,holidays); }catch(e){}
  }
 }
+
 // 올해와 내년을 함께 받는다. 12/31의 '연휴전날' 판정에 내년 1/1이 필요하다.
 async function holLoadYears(){
  const y=new Date().getFullYear();
@@ -3360,7 +3453,7 @@ function ctxSnapshot(){
  return {app:'gongcha', exported:new Date().toISOString(), bizdate:bizDate(),
    daycontext:dayContext(), events:todayEvents,
    weather_last:wxLast?wxLast.v:null,
-   trips:trips, odo:odo, obs:obs, airlog:airLog,
+   trips:trips, odo:odo, obs:obs, airlog:airLog, missedCalls:missedCalls,
    history:(typeof history!=='undefined'?history:[]),
    expenses:(typeof exps!=='undefined'?exps:null),
    config:(typeof CFG!=='undefined'?CFG:null)};
@@ -3415,6 +3508,22 @@ function nearRoute(la,lo,maxKm){
  let b=null,bd=1e9;
  for(const r of RROUTE){ const d=dist(la,lo,r.la,r.lo); if(d<bd){bd=d;b=r;} }
  return (b&&bd<=(maxKm||12))?{r:b,km:bd}:null;
+}
+function drawCall(){
+ const b=document.getElementById('callbtn'), h=document.getElementById('hint');
+ if(!b) return;
+ b.hidden = occupied;                       // 손님 타면 숨긴다
+ if(occupied) return;
+ if(callPt){
+  b.className='call on';
+  b.textContent='콜 취소 (놓침)';
+  if(h) h.textContent=`콜 수락됨${callPt.dir?' · 하차지 기준 '+callPt.dir+'쪽':''}`+
+        `${callPt.roamMin!=null?' · 배회 '+callPt.roamMin.toFixed(0)+'분':''} — 승차하면 아래 버튼`;
+ }else{
+  b.className='call';
+  b.textContent='콜 받음';
+  if(h) h.textContent='빈차 · 손님을 태우면 누르세요';
+ }
 }
 function routeDraw(){
  const box=document.getElementById('rrbox'); if(!box) return;
@@ -3899,6 +4008,41 @@ tog.onclick=async()=>{
   const nt={start:Date.now(),from:cur?cur.n:null,fla:pos?.la,flo:pos?.lo,
    wait:cur&&valid(h)?cur.w[idx(h)]:null,
    daycontext:dayContext(), events:todayEvents.slice()};
+  // ── 직전 하차 → 이번 승차까지의 공차 구간을 자동 기록 ──
+  // 카카오 흐름: 하차 → 배회 → 자동배차 → 승차지 이동 → 승차.
+  // 버튼 없이 잴 수 있는 것: 걸린 시간, 실제 주행거리, 하차지↔승차지 직선거리.
+  if(pv&&pv.end){
+   nt.dead={min:Math.round((Date.now()-pv.end)/60000*10)/10,
+            km:Math.round(deadOdo*100)/100,
+            fromName:pv.to||null};
+   if(pv.tla!=null&&pos) nt.dead.straightKm=Math.round(dist(pv.tla,pv.tlo,pos.la,pos.lo)*100)/100;
+   if(nt.dead.min>0) nt.dead.kmh=Math.round(nt.dead.km/(nt.dead.min/60)*10)/10;
+   // 하차지 → 승차지 방향
+   if(pv.tla!=null&&pos){
+    const b2=bearing(pv.tla,pv.tlo,pos.la,pos.lo);
+    nt.dead.bear=Math.round(b2); nt.dead.dir=dir8(b2);
+   }
+   // 콜 수락을 눌렀다면 배회 구간과 픽업 구간을 나눈다
+   if(callPt){
+    nt.call={
+     at:callPt.t,
+     roamMin:callPt.roamMin??null,             // 하차 → 콜 수신
+     roamKm:callPt.roamKm??null,
+     roamDir:callPt.dir||null,                 // 배회 방향(하차지 기준)
+     roamBear:callPt.bear??null,
+     pickMin:Math.round((Date.now()-callPt.t)/60000*10)/10,   // 콜 → 승차
+     pickKm:Math.round((deadOdo-(callPt.pickStartOdo||0))*100)/100
+    };
+    if(callPt.la!=null&&pos){
+     const b3=bearing(callPt.la,callPt.lo,pos.la,pos.lo);
+     nt.call.pickDir=dir8(b3);
+     nt.call.pickStraightKm=Math.round(dist(callPt.la,callPt.lo,pos.la,pos.lo)*100)/100;
+    }
+   }
+  }
+  callPt=null;
+  deadOdo=0;
+  try{ drawCall(); }catch(e){}
   trips.push(nt);
   // 날씨는 건별로 기록한다 (비는 오다 그치므로 하루 단위로는 못 잡는다).
   // 부가정보이므로 실패해도 운행 기록은 그대로 저장된다.
@@ -3907,7 +4051,7 @@ tog.onclick=async()=>{
    Store.set(KEY,trips);render();}});
   tog.textContent='승객 하차';tog.classList.add('occ');
   hint.textContent='실차 · 목적지를 설정하면 미리 계산합니다';
- }else{occupied=false;const t=trips[trips.length-1];
+ }else{occupied=false; try{ drawCall(); }catch(e){}const t=trips[trips.length-1];
   t.end=Date.now();lastDrop=t.end;t.to=cur?cur.n:null;t.tla=pos?.la;t.tlo=pos?.lo;
   if(pos){const g=await revGeo(pos.la,pos.lo);
     if(g){t.to=g.dong||t.to; t.toAddr=g.bldg||g.road||g.full;}}
@@ -4022,12 +4166,36 @@ document.getElementById('clr').onclick=async()=>{
  try{ airKey=(await Store.get(KEY_AIRK))||''; airLog=(await Store.get(KEY_AIRLOG))||[];
       const _ak=document.getElementById('airkey'); if(_ak) _ak.value=airKey;
  }catch(e){ console.warn('공항 설정 로드 실패',e.message); }
+ // ── 콜 수락 버튼 ──
+ const cb=document.getElementById('callbtn');
+ if(cb) cb.onclick=async()=>{
+  if(!callPt){                                   // 콜 받음
+   const pv=trips.filter(x=>x.end).pop();
+   callPt={t:Date.now(), la:pos?.la, lo:pos?.lo, roamKm:Math.round(deadOdo*100)/100};
+   if(pv&&pv.end){
+    callPt.roamMin=Math.round((Date.now()-pv.end)/60000*10)/10;
+    if(pv.tla!=null&&pos){
+     const b=bearing(pv.tla,pv.tlo,pos.la,pos.lo);
+     callPt.bear=Math.round(b); callPt.dir=dir8(b);
+     callPt.fromDropKm=Math.round(dist(pv.tla,pv.tlo,pos.la,pos.lo)*100)/100;
+    }
+   }
+   callPt.pickStartOdo=deadOdo;
+   drawCall();
+  }else{                                         // 콜 취소(놓침)
+   missedCalls.push({...callPt, lost:Math.round((Date.now()-callPt.t)/1000)});
+   try{ await Store.set('gongcha:missed:'+bizDate(),missedCalls); }catch(e){}
+   callPt=null; drawCall();
+  }
+ };
+
  // 컨텍스트(날씨·공휴일·행사) 로드
  try{
   const ev=await Store.get(KEY_EVT);
   todayEvents=(ev&&ev.d===bizDate())?ev.v:[];
   evtPresets=(await Store.get(KEY_EVTP))||[];
   const wc=await Store.get(KEY_WXC); if(wc) wxLast=wc;
+  missedCalls=(await Store.get('gongcha:missed:'+bizDate()))||[];
   holidays=(await Store.get(KEY_HOL))||{};
   ctxDraw(); evtDraw();
   holLoadYears().then(ctxDraw);
