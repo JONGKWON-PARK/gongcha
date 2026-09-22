@@ -243,6 +243,43 @@ section{padding:15px 16px}
 .hsum div:last-child{border-right:0}
 .hsum .k{font-size:9px;color:var(--dim);margin-bottom:3px}
 .hsum .v{font-size:15px;font-weight:700}
+.pchips{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 10px}
+.pchip{flex:0 0 auto;padding:6px 11px;border:1px solid var(--line);background:transparent;color:var(--dim);
+ font-size:11px;letter-spacing:.2px;border-radius:2px;cursor:pointer}
+.pchip.on{border-color:var(--amber);color:var(--amber);font-weight:700}
+.zmx{width:100%;border-collapse:collapse;font-size:10.5px}
+.zmx th,.zmx td{border:1px solid var(--line);padding:3px 4px;text-align:center}
+.zmx th{color:var(--dim);font-size:9px;font-weight:400}
+.zmx td.hot{color:var(--amber);font-weight:700}
+.zmx td.z{color:var(--line)}
+.zmx th.rh{text-align:left;color:var(--txt);font-size:9.5px}
+.chn{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);align-items:center;font-size:11.5px}
+.chn .cp{flex:1}.chn .cp b{color:var(--amber)}
+.chn .cv{width:52px;text-align:right;font-weight:700}
+.chn .cm{width:62px;text-align:right;color:var(--dim);font-size:10px}
+.fixbar{margin:0 0 8px;padding:9px 12px;border:1px solid var(--vac);background:rgba(255,90,90,.07);
+ font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer}
+.fixbar b{color:var(--vac)} .fixbar span.go{color:var(--vac);font-weight:700;white-space:nowrap}
+.shrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+ padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}
+.shrow i{font-style:normal;font-size:10px}
+.shrow b{font-size:13px;font-weight:700}
+.shrow.tot{border-bottom:0;border-top:1px solid var(--line);margin-top:2px;padding-top:8px}
+.shrow.tot b{color:var(--amber)}
+.tlbox{max-height:340px;overflow-y:auto}
+.tl{display:flex;gap:8px;padding:5px 0;align-items:flex-start;font-size:11.5px}
+.tl .ti{width:16px;flex-shrink:0;text-align:center;color:var(--faint);font-size:9px;line-height:1.7}
+.tl .tt{width:38px;flex-shrink:0;color:var(--dim);font-size:10.5px;line-height:1.5}
+.tl .tb{flex:1;min-width:0}
+.tl .tm{display:block;line-height:1.45}
+.tl .ts{display:block;color:var(--dim);font-size:10px;line-height:1.4}
+.tl.ride .ti{color:var(--occ)} .tl.ride .tm b{color:var(--txt)}
+.tl.roam .ti,.tl.pick .ti{color:var(--vac)}
+.tl.roam .tm,.tl.pick .tm{color:var(--dim)}
+.tl.shift .ti{color:var(--amber)} .tl.shift .tm{color:var(--amber);font-weight:700}
+.tl.rest .ti{color:var(--faint)} .tl.fuel .ti{color:var(--faint)}
+.chint{margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-left:2px solid var(--amber);font-size:11.5px;line-height:1.5}
+.chint b{color:var(--amber)}
 .hist{border:1px solid var(--line);border-bottom:0;max-height:290px;overflow-y:auto}
 .hist .h{display:flex;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:12px;align-items:center}
 .hist .h.hd{color:var(--dim);font-size:9.5px;letter-spacing:.3px;position:sticky;top:0;background:var(--bg)}
@@ -928,6 +965,8 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 <div class="pane" id="pane-anal">
   <section>
     <div class="eyebrow"><span>기간</span><span id="anrange" style="letter-spacing:0"></span></div>
+    <div class="pchips" id="pchips"></div>
+    <div id="pcmp"></div>
     <div class="kpi" id="ankpi"></div>
     <div class="kpi" id="kpi2" style="margin-top:8px"></div>
     <div class="card"><h5>시간대별 매출 (건당 평균)</h5>
@@ -950,6 +989,23 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
     <div class="card"><h5>연비 · 주유</h5><div id="fuelWrap"></div></div>
     <div class="card"><h5>추천 적중률 · 예측 대기 vs 실제 공차</h5><div id="acc"></div></div>
     <div class="card"><h5>피크 배수 분포</h5><div class="rank" id="rkPeak"></div></div>
+
+    <div class="card"><h5>시간대</h5><div class="pchips" id="zbands" style="margin:0"></div>
+      <div class="mt" style="color:var(--dim);font-size:10px">아래 지역·연쇄 카드에 적용됩니다</div></div>
+    <div class="card"><h5>승차 지역 (시군구)</h5><div class="rank" id="zFrom"></div></div>
+    <div class="card"><h5>하차 지역 (시군구)</h5><div class="rank" id="zTo"></div></div>
+    <div class="card"><h5>권역 OD 매트릭스</h5>
+      <div style="overflow-x:auto"><div id="zMatrix"></div></div>
+      <div class="mt" id="zmxNote" style="color:var(--dim);font-size:10px;margin-top:6px"></div></div>
+    <div class="card"><h5>연쇄 이동 · 하차 시군구 다음은?</h5><div id="chZone"></div></div>
+    <div class="card"><h5>연쇄 이동 · 3단 경로 (동 단위)</h5><div id="chPath"></div></div>
+    <div class="card"><h5>분석용 내보내기</h5>
+      <div class="mt" style="color:var(--dim);font-size:10.5px;margin-bottom:8px">
+        운행 한 건이 한 줄인 CSV입니다. 승·하차 좌표·시군구·권역, 공차 구간, 배회·픽업, 날씨, 요일유형, 태그까지
+        모두 들어 있어 기간·지역을 가리지 않고 바깥에서 정밀 분석할 수 있습니다.</div>
+      <div class="tools"><button id="exDay">오늘 업무일</button><button id="exPeriod">선택 기간</button>
+        <button id="exAll">전체</button><button id="exJSON">전체 JSON</button></div>
+      <div id="exStat" class="mt" style="color:var(--dim);font-size:10.5px;margin-top:8px"></div></div>
     <div id="anempty"></div>
   </section>
 </div>
@@ -971,6 +1027,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
       <div class="fr"><label>예상 요금</label><input id="bk_fare" type="number" inputmode="numeric" placeholder="원"></div>
       <div class="fr"><label>소요(분)</label><input id="bk_dur" type="number" inputmode="numeric" placeholder="분"></div>
       <div class="fr"><label>메모</label><input id="bk_memo" placeholder="메모 (선택)"></div>
+      <div id="bk_conf"></div>
       <div class="tools" style="margin-top:8px">
         <button id="bk_cancel">취소</button>
         <button id="bk_save" style="border-color:var(--amber);color:var(--amber)">예약 저장</button>
@@ -1048,6 +1105,16 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 </div>
 
 <section style="padding-bottom:0">
+  <div class="eyebrow"><span>오늘 근무</span><span id="shiftlab" style="letter-spacing:0"></span></div>
+  <div id="shiftbox"></div>
+</section>
+
+<section style="padding-bottom:0;padding-top:14px">
+  <div class="eyebrow"><span>공차 구간</span></div>
+  <div id="deadbox"></div>
+</section>
+
+<section style="padding-bottom:0;padding-top:14px">
   <div class="eyebrow"><span>휴게</span><button id="restbtn">지금부터 휴게</button></div>
   <div id="restbox"></div>
 </section>
@@ -1083,6 +1150,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
      <div class="gninfo"><div class="gnnm" id="gn_nm">-</div><div class="gnmeta mono" id="gn_meta">-</div></div>
      <button class="gnbtn" id="gn_go">길찾기</button>
    </div></div>
+  <div class="chint" id="chHint" hidden></div>
   <div class="here">
     <div><span class="dong" id="hd">—</span><span class="gu" id="hg"></span></div>
     <div class="row mono">
@@ -1125,7 +1193,10 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 
 <section style="padding-top:0" id="logsec" hidden>
   <div class="eyebrow"><span>오늘 기록</span></div>
+  <div class="fixbar" id="fixbar" hidden></div>
   <div class="log" id="log"></div>
+  <div class="eyebrow" style="margin-top:16px"><span>타임라인</span><button id="tlcsv">CSV</button></div>
+  <div class="tlbox" id="tlbox"></div>
   <div class="tools"><button id="exp">내보내기</button><button id="imp">불러오기</button><button id="clr" class="close">하루 결산마감</button></div>
 </section>
 
@@ -1137,6 +1208,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 </div>
 
 <div class="dock">
+  <button class="call" id="shiftbtn">운행 시작</button>
   <button class="call" id="callbtn" hidden>콜 받음</button>
   <button class="big" id="tog">승객 탑승</button>
   <div class="hint" id="hint">빈차 · 손님을 태우면 누르세요</div>
@@ -1186,11 +1258,12 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   </div>
   <div style="display:flex;gap:6px;margin-bottom:4px">
     <div style="flex:1"><div class="glab">근무 시작</div><input id="g_st" type="number" inputmode="numeric" placeholder="6"></div>
-    <div style="flex:1"><div class="glab">업무일 경계</div><input id="g_bd" type="number" inputmode="numeric" placeholder="6"></div>
+    <div style="flex:1"><div class="glab">결산 경계(시)</div><input id="g_bd" type="number" inputmode="numeric" placeholder="0"></div>
     <div style="flex:1.4"><div class="glab">월 기준금(선택)</div><input id="g_qt" type="number" inputmode="numeric" placeholder="4966000"></div>
   </div>
   <div style="font-size:10.5px;color:var(--faint);margin:-4px 0 10px;line-height:1.5">
-    업무일 경계 06시 = 새벽 2시 운행도 전날 기록으로 잡힙니다. 야간 근무 시 필수입니다.
+    하루 결산은 <b>00:00~23:59</b> 기준입니다. 자정이 지나면 앱이 스스로 전날을 마감하고 새 하루를 엽니다 —
+    운행 중이어도 끊기지 않습니다. 경계를 0이 아닌 값으로 두면 그 시각 기준으로 바뀌지만, 권장하지 않습니다.
   </div>
   <div class="chips" style="margin-top:6px">
     <button id="pre_v">벤티(강희석) 15/30/40만</button>
@@ -1258,9 +1331,13 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
     <label>승차 시각</label><input id="ed_s" type="time"></div>
     <div style="flex:1"><label>하차 시각</label><input id="ed_e" type="time"></div></div>
   <label>요금 (원)</label><input id="ed_f" type="number" inputmode="numeric">
-  <div style="display:flex;gap:6px"><div style="flex:1">
-    <label>출발</label><input id="ed_from"></div>
-    <div style="flex:1"><label>도착</label><input id="ed_to"></div></div>
+  <div style="display:flex;gap:6px"><div style="flex:0 0 38%">
+    <label>승차 동</label><input id="ed_from" placeholder="예: 역삼1동"></div>
+    <div style="flex:1"><label>승차 지점 (건물·장소)</label><input id="ed_fp" placeholder="예: 강남파이낸스센터"></div></div>
+  <div style="display:flex;gap:6px"><div style="flex:0 0 38%">
+    <label>하차 동</label><input id="ed_to" placeholder="예: 사직동"></div>
+    <div style="flex:1"><label>하차 지점 (건물·장소)</label><input id="ed_tp" placeholder="예: 광화문 D타워"></div></div>
+  <div class="sub2" id="ed_addr" style="margin-top:4px;font-size:10px"></div>
   <div class="tagsec" id="ed_tags">
     <div class="tglab">호출</div><div class="tg" data-t="call"></div>
     <div class="tglab">승객</div><div class="tg" data-t="pax"></div>
@@ -1292,7 +1369,6 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   <label>유류비 (원)</label><input id="e_gas" type="number" inputmode="numeric" placeholder="0">
   <label>통행료 (원)</label><input id="e_toll" type="number" inputmode="numeric" placeholder="0">
   <label>식대·기타 (원)</label><input id="e_etc" type="number" inputmode="numeric" placeholder="0">
-  <label>플랫폼 수수료율 (%)</label><input id="e_fee" type="number" inputmode="decimal" placeholder="10">
   <button class="opt" id="expsave" style="border-color:var(--amber);color:var(--amber)">저장</button>
   <button class="opt x" id="expclose">닫기</button>
 </div></div>
@@ -1347,12 +1423,12 @@ const Store={
 
 let trips=[],occupied=false,cur=null,pos=null,dest=null,pending=null,lastList=[],vetList=[],mineList=[],navTarget=null;
 let apiKey='', mySpots=[], etaCache={}, geoCache={}, liveOn=false, fetching=false;
-let expense={gas:0,toll:0,etc:0,fee:10}, pickPeak=null, monthRev=0, rests=[], restOn=null;
+let expense={gas:0,toll:0,etc:0}, pickPeak=null, monthRev=0, rests=[], restOn=null;
 let KEY_REST='gongcha:rest';
 let KEY_MREV='gongcha:mrev';
 let KEY_EXP='gongcha:exp';
 // 3단계 목표 (기본: 강희석 벤티 기준)
-const DEF_CFG={st:4,s:[{h:7,g:150000},{h:12,g:300000},{h:14,g:400000}],quota:0,bd:6,fuel:'lpg'};
+const DEF_CFG={st:4,s:[{h:7,g:150000},{h:12,g:300000},{h:14,g:400000}],quota:0,bd:0,fuel:'lpg',basis:'end'};
 const FUELS={ev:{n:'전기차',u:'kWh',lab:'전기료',eff:'km/kWh'},lpg:{n:'가스차',u:'L',lab:'가스비',eff:'km/L'},gas:{n:'휘발유차',u:'L',lab:'유류비',eff:'km/L'},diesel:{n:'경유차',u:'L',lab:'유류비',eff:'km/L'},hybrid:{n:'하이브리드',u:'L',lab:'유류비',eff:'km/L'}};
 const FU=()=>FUELS[CFG.fuel||'lpg'];
 let CFG=JSON.parse(JSON.stringify(DEF_CFG));
@@ -1361,7 +1437,7 @@ const KEY_API='gongcha:apikey', KEY_SPOT='gongcha:myspots';
 // 업무일: 경계 시각(기본 06시) 이전은 전날로 귀속
 function bizDate(t){
  const d=new Date(t||Date.now());
- const bd=(typeof CFG!=='undefined'&&CFG.bd!=null)?CFG.bd:6;
+ const bd=(typeof CFG!=='undefined'&&CFG.bd!=null)?CFG.bd:0;
  if(d.getHours()<bd) d.setDate(d.getDate()-1);
  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
@@ -1405,21 +1481,30 @@ function offGrid(la,lo){
 }
 function isOff(g){return g&&g.off;}
 
-let lastFix=null, odoSaveT=0;
+let lastFix=null, odoSaveT=0, odoGap={n:0,km:0};
 function locate(){
  if(!navigator.geolocation){fallback();return;}
  navigator.geolocation.watchPosition(p=>{
   const np={la:p.coords.latitude,lo:p.coords.longitude,acc:p.coords.accuracy||99};
-  // 주행거리 누적: 정확도 50m 이내, 이동 20m~2km 구간만
-  if(lastFix && np.acc<=50){
+  // 주행거리 누적.
+  // 예전엔 한 번에 2km 넘게 튀면 버렸다 — 길찾기로 티맵을 열면 크롬이 뒤로 가서 GPS가 끊기고,
+  // 돌아왔을 때의 이동이 통째로 사라졌다(9/17 실차 42.9km 중 2.4km만 기록).
+  // 이제 걸린 시간으로 속도를 따져 시속 110km 이하면 실제 이동으로 인정한다.
+  const nowT=Date.now();
+  if(lastFix){
    const d=dist(lastFix.la,lastFix.lo,np.la,np.lo);
-   if(d>0.02 && d<2){
+   const hrs=Math.max((nowT-(lastFix.t||nowT))/3600000,1/3600);
+   const v=d/hrs;
+   const good = np.acc<=50 || (np.acc<=150 && d>=1);      // 먼 이동은 정확도 오차 비중이 작다
+   if(good && d>0.02 && d<80 && (d<2 || v<=110)){
     odo.total+=d;
     if(occupied) odo.paid+=d; else deadOdo+=d;   // 빈차 주행 = 공차 이동
-    if(Date.now()-odoSaveT>60000){odoSaveT=Date.now();Store.set(KEY_ODO,odo);}
+    if(d>=2) odoGap.n++, odoGap.km+=d;             // 끊김 복구분 (진단용)
+    if(nowT-odoSaveT>60000){odoSaveT=nowT;Store.set(KEY_ODO,odo);}
    }
   }
-  if(np.acc<=50) lastFix=np;
+  if(np.acc<=50 || (np.acc<=150 && (!lastFix || dist(lastFix.la,lastFix.lo,np.la,np.lo)>=1)))
+   lastFix={la:np.la,lo:np.lo,acc:np.acc,t:nowT};
   pos={la:np.la,lo:np.lo};
   const n=nearest(pos.la,pos.lo);
   // 서울 지점 12km 이내면 그 지점, 아니면 현재 위치 기반 가상 지점
@@ -1455,6 +1540,10 @@ function options(anchor,h){
   .sort((a,b)=>a.total-b.total).slice(0,6);}
 
 function render(){
+ try{ checkRollover(); }catch(e){}
+ try{ shiftAutoClose(); }catch(e){}
+ try{ chainHint(); }catch(e){}
+ try{ drawShift(); drawDead(); drawTimeline(); drawFixbar(); }catch(e){}
  const now=new Date(),nowH=now.getHours();
  document.getElementById('clk').textContent=String(nowH).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
  document.getElementById('stt').textContent=occupied?'실차':'빈차';
@@ -1698,8 +1787,11 @@ async function revGeo(la,lo){
   const r=await fetch(u,{headers:{'Accept':'application/json'}});
   if(!r.ok) throw 0;
   const a=(await r.json()).addressInfo; if(!a) throw 0;
+  const road=(a.roadName||'')+(a.buildingIndex?' '+a.buildingIndex:'');
+  const jibun=(a.legalDong||'')+(a.bunji?' '+a.bunji:'');
   const v={dong:a.adminDong||a.legalDong||'', gu:a.gu_gun||'', road:a.roadName||'',
-           bldg:a.buildingName||'', full:a.fullAddress||''};
+           bldg:a.buildingName||'', full:a.fullAddress||'',
+           roadAddr:road.trim(), jibun:jibun.trim(), legal:a.legalDong||''};
   geoCache[k]=v; return v;
  }catch(e){ return null; }
 }
@@ -1716,6 +1808,27 @@ async function poiSearch(kw){
     g:[x.upperAddrName,x.middleAddrName].filter(Boolean).join(' ')})).filter(x=>x.la&&x.lo);
  }catch(e){ return []; }
 }
+
+/* ── 승·하차 지점명 ──
+   건물명이 있으면 건물명, 없거나 가로판매대·구두수선 같은 노상 시설이면
+   도로명+건물번호('올림픽로 300') → 지번('신천동 29') → 전체 주소 순으로 쓴다. */
+const JUNK_BLDG=/가로판매대|구두수선|공중전화|판매대|노점|편의시설|정류장|정류소|승강장|자판기|화장실|벤치|전신주|휴지통|가판/;
+function placeOf(g){
+ if(!g) return null;
+ const b=(g.bldg||'').trim();
+ const good = b && !JUNK_BLDG.test(b);
+ return { name: good? b : (g.roadAddr||g.jibun||g.full||b||null),
+          bldg: b||null, bldgOK: good, roadAddr:g.roadAddr||null, jibun:g.jibun||null, full:g.full||null };
+}
+function setPlace(t,side,g){
+ const P=placeOf(g); if(!P) return;
+ const k=side==='from'?'from':'to';
+ t[k+'Addr']=P.name;              // 화면·분석에 쓰는 대표 지점명
+ t[k+'Bldg']=P.bldg; t[k+'Road']=P.roadAddr; t[k+'Jibun']=P.jibun; t[k+'Full']=P.full;
+ if(g.dong) t[k]=g.dong;
+ const gu=guNorm(g.gu,g.full); if(gu) t[k+'Gu']=gu;
+}
+const placeLine=(dong,addr)=> dong&&addr&&addr!==dong ? `${dong} · ${addr}` : (addr||dong||'?');
 function setLive(txt){
  const el=document.getElementById('livebadge');
  if(el){el.textContent=txt; el.className='live'+(txt==='실시간'?'':' off');}
@@ -2390,10 +2503,11 @@ function initBook(){
 }
 function liveClash(){
  const $=id=>document.getElementById(id);
- if(!$('bk_d').value||!$('bk_t').value){$('bk_conf').innerHTML='';return;}
+ const box=$('bk_conf'); if(!box||!$('bk_d')||!$('bk_t')) return;
+ if(!$('bk_d').value||!$('bk_t').value){box.innerHTML='';return;}
  const c=checkClash({d:$('bk_d').value,t:$('bk_t').value,from:$('bk_from').value,
    to:$('bk_to').value,dur:+$('bk_dur').value||60},editId);
- $('bk_conf').innerHTML=`<div class="conf ${c.t}">${c.t==='ok'?'✓ ':'⚠ '}${c.m}</div>`;
+ box.innerHTML=`<div class="conf ${c.t}">${c.t==='ok'?'✓ ':'⚠ '}${c.m}</div>`;
 }
 
 /* ─── 경비·영수증·세금 (B1~B4) ─── */
@@ -2478,9 +2592,7 @@ function renderTax(){
  const byCat={};
  expList.filter(x=>x.d.startsWith(yr)).forEach(x=>byCat[x.c]=(byCat[x.c]||0)+x.a);
  const manual=Object.values(byCat).reduce((a,b)=>a+b,0);
- const feeRate=(expense.fee||0)/100;
- const fee=Math.round(rev*feeRate);
- const cost=manual+fee;
+ const cost=manual;
  const base=Math.max(0,rev-cost-1500000);   // 기본공제 150만
  const tax=incomeTax(base);
  const local=Math.round(tax*0.1);
@@ -2490,7 +2602,6 @@ function renderTax(){
   <div class="e h"><span>${yr}년 수입금액</span><b class="mono">${fmt(rev)}</b></div>
   <div class="e"><span>운행일수</span><b class="mono">${days.length}일</b></div>
   <div class="e h"><span>필요경비</span><b class="mono">${fmt(cost)}</b></div>
-  <div class="e"><span>플랫폼 수수료 ${expense.fee||0}%</span><b class="mono">${fmt(fee)}</b></div>
   ${rows}
   <div class="e h"><span>소득금액</span><b class="mono">${fmt(rev-cost)}</b></div>
   <div class="e"><span>기본공제</span><b class="mono">−1,500,000</b></div>
@@ -2514,7 +2625,11 @@ function exportTaxCsv(){
 /* ─── 분석 (A3) ─── */
 function allTrips(){
  const out=[...trips.filter(t=>t.end)];
- for(const d of (tripArchive||[])) out.push(...d);
+ // 오늘 몫은 이미 trips 에 있다. 아카이브의 같은 날짜 사본을 넣으면 두 번 세어진다.
+ for(const d of (tripArchive||[])){
+  if(d&&d.length&&typeof tripYMD==='function'&&tripYMD(d[0])===BIZ) continue;
+  out.push(...d);
+ }
  return out;
 }
 function bars(el,lab,vals,labels,fmtv){
@@ -2578,10 +2693,714 @@ function sidoOf(la,lo){
   '관악구','서초구','강남구','송파구','강동구'];
  return SEOUL.includes(g.g)?'서울':'경기·인천';
 }
+/* ═══════════ 근무(운행 시작·종료) · 자정 롤오버 · 공차 2구간 (v25) ═══════════ */
+let shifts=[];                       // [{s:시작ts, e:종료ts|null, auto:true}]
+const KEY_SHIFT='gongcha:shifts';
+const SHIFT_IDLE_MIN=60;             // 무활동 이 분수 넘으면 마지막 활동 시각으로 자동 종료
+let lastAct=null;                    // 마지막 운행 활동(하차·승차·콜) 시각
+const HM=ts=>{const d=new Date(ts);
+ return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+
+function openShift(){ return shifts.find(x=>!x.e)||null; }
+async function shiftStart(){
+ if(openShift()) return false;
+ shifts.push({s:Date.now(),e:null});
+ if(shifts.length>200) shifts=shifts.slice(-200);
+ lastAct=Date.now();
+ await Store.set(KEY_SHIFT,shifts); drawShift(); render(); return true;
+}
+async function shiftEnd(at,auto){
+ const o=openShift(); if(!o) return false;
+ o.e=at||Date.now(); if(auto) o.auto=true;
+ await Store.set(KEY_SHIFT,shifts); drawShift(); render(); return true;
+}
+// 잊고 안 눌러도 기록이 망가지지 않게 — 마지막 활동 후 60분이면 그 시각으로 닫는다
+function shiftAutoClose(){
+ const o=openShift(); if(!o) return;
+ const last=Math.max(o.s, lastAct||0,
+   ...trips.filter(t=>t.end).map(t=>t.end), ...(restOn?[restOn]:[]));
+ if(restOn) return;                                   // 휴게 중이면 근무 중이다
+ if(Date.now()-last > SHIFT_IDLE_MIN*60000) shiftEnd(last,true);
+}
+// 하루(00:00~24:00)와 근무 구간이 겹치는 시간(분)
+function shiftMinutesOn(ymd){
+ const a=new Date(ymd+'T00:00:00').getTime(), b=a+86400000;
+ let m=0;
+ for(const x of shifts){ const s=Math.max(x.s,a), e=Math.min(x.e||Date.now(),b);
+  if(e>s) m+=(e-s)/60000; }
+ return m;
+}
+function shiftSpanToday(){
+ const on=shiftMinutesOn(BIZ);
+ const day=shifts.filter(x=>{const a=new Date(BIZ+'T00:00:00').getTime();
+   return (x.e||Date.now())>a && x.s<a+86400000;});
+ const first=day.length?Math.min(...day.map(x=>x.s)):null;
+ const last =day.length?Math.max(...day.map(x=>x.e||Date.now())):null;
+ return {min:on,first,last,open:!!openShift(),n:day.length};
+}
+
+/* ── 순근무시간 (시간당 수입의 분모) ──
+   근무 구간: '운행 시작' ~ '운행 종료'(진행 중이면 지금). 자정을 걸친 근무는 오늘 몫만.
+   운행 시작을 누르지 않은 날: 첫 승차 ~ (실차 중이거나 마지막 활동 60분 이내면 지금, 아니면 마지막 하차).
+   여기서 휴게 시간을 뺀다. 2시간 넘는 공백은 휴게를 안 눌렀어도 휴식으로 보고 뺀다. */
+function workInfo(){
+ const done=trips.filter(t=>t.end);
+ const SH=shiftSpanToday();
+ let gross, src;
+ if(SH.min>0){ gross=SH.min; src='근무'; }
+ else if(trips.length){
+  const st=trips[0].start;
+  const lastEnd=done.length?done[done.length-1].end:st;
+  const live=occupied||(Date.now()-Math.max(lastEnd,lastAct||0))<SHIFT_IDLE_MIN*60000;
+  gross=((live?Date.now():lastEnd)-st)/60000; src='첫승차';
+ } else { gross=0; src='없음'; }
+ const rest=restTotal();
+ let brk=0;
+ try{ const DS=deadStats(done); brk=DS.brk||0; }catch(e){}
+ // 휴게 버튼으로 잰 시간과 겹칠 수 있는 공백은 더 큰 쪽만 뺀다
+ const off=Math.max(rest,brk);
+ const net=Math.max(0,gross-off);
+ const rev=done.reduce((a,t)=>a+(t.fare||0),0);
+ return {gross, rest, brk, off, net, hours:net/60, src, rev,
+         perHour: net>=6 ? rev/(net/60) : null};
+}
+function drawShift(){
+ const btn=document.getElementById('shiftbtn'); if(!btn) return;
+ const o=openShift();
+ btn.textContent = o? '운행 종료' : '운행 시작';
+ btn.className = 'call'+(o?' on':'');
+ const box=document.getElementById('shiftbox');
+ if(box){
+  const st=shiftSpanToday();
+  if(!st.n){ box.innerHTML='<div class="mt" style="color:var(--faint);font-size:11px">아직 운행 시작을 누르지 않았습니다</div>'; }
+  else{
+   const h=Math.floor(st.min/60), m=Math.round(st.min%60);
+   box.innerHTML=`<div class="shrow"><span>${HM(st.first)} 시작${st.open?'':' · '+HM(st.last)+' 종료'}</span>`+
+     `<b class="mono">${h}시간 ${m}분</b></div>`+
+     (st.n>1?`<div class="mt" style="color:var(--faint);font-size:10px">오늘 ${st.n}개 근무 구간 합계</div>`:'')+
+     (st.open?'<div class="mt" style="color:var(--occ);font-size:10px">운행 중</div>':'');
+  }
+ }
+}
+
+/* ── 자정 롤오버 — 운행 중이어도 끊기지 않게 하루만 넘긴다 ── */
+let rollBusy=false;
+async function checkRollover(){
+ if(rollBusy) return false;
+ const now=bizDate();
+ if(now===BIZ) return false;
+ rollBusy=true;
+ try{
+  const keep = trips.filter(t=>!t.end);        // 손님 태운 채 자정을 넘긴 운행
+  const done = trips.filter(t=>t.end);
+  const rev  = done.reduce((a,t)=>a+(t.fare||0),0);
+  await commitDay();                            // 어제 몫을 확정
+  monthRev+=rev; await Store.set(KEY_MREV,monthRev);
+  // 새 하루
+  BIZ=now; KEY='gongcha:'+BIZ;
+  trips=keep.slice();                           // 진행 중 운행은 그대로 이어간다
+  odo={total:0,paid:0}; lastFix=null;
+  rests=[]; restOn=restOn?Date.now():null;      // 휴게 중이면 자정부터 다시 잰다
+  fuels=[];
+  await Store.set(KEY,trips); await Store.set(KEY_ODO,odo);
+  await Store.set(KEY_REST,{r:rests,on:restOn}); await Store.set(KEY_FUEL,fuels);
+  try{ buildZoneRate(); }catch(e){}
+  try{ drawShift(); renderRest(); renderFuel(); renderHist(); }catch(e){}
+  return true;
+ } finally { rollBusy=false; }
+}
+
+/* ── 공차 2구간 ──
+   총 공차 = 배회 공차(하차 → 콜 수신) + 픽업 공차(콜 수신 → 승객 탑승).
+   콜 버튼을 누르지 않았으면 나눌 수 없으므로 전체를 배회로 보고 split=false 로 표시한다. */
+const BREAK_MIN=120;                 // 이보다 긴 공차는 휴식·식사로 본다
+const isBreak=t=>!!(t&&t.dead&&t.dead.min!=null&&t.dead.min>BREAK_MIN);
+function deadSplit(t){
+ const d=t&&t.dead; if(!d) return null;
+ if(d.min!=null&&d.min>BREAK_MIN) return {tot:null,roam:null,pick:null,roamKm:null,pickKm:null,split:false,brk:d.min};
+ const tot=d.min!=null?d.min:null;
+ if(d.split){ return {tot, roam:d.roamMin??null, pick:d.pickMin??null,
+   roamKm:d.roamKm??null, pickKm:d.pickKm??null, split:true}; }
+ return {tot, roam:tot, pick:null, roamKm:d.km??null, pickKm:null, split:false};
+}
+function deadStats(T){
+ let tot=0,roam=0,pick=0,rKm=0,pKm=0,tKm=0,n=0,sp=0,paid=0,brk=0,bn=0;
+ for(const t of T){
+  const d=deadSplit(t);
+  if(d&&d.brk!=null){ brk+=d.brk; bn++; if(t.start&&t.end) paid+=(t.end-t.start)/60000; continue; }
+  if(d&&d.tot!=null){ n++; tot+=d.tot;
+   if(d.split){ sp++; roam+=d.roam||0; pick+=d.pick||0; rKm+=d.roamKm||0; pKm+=d.pickKm||0; }
+   else roam+=d.roam||0;
+   tKm+=(t.dead.km||0); }
+  if(t.start&&t.end) paid+=(t.end-t.start)/60000;
+ }
+ return {n,split:sp,tot:+tot.toFixed(1),roam:+roam.toFixed(1),pick:+pick.toFixed(1),
+   roamKm:+rKm.toFixed(1),pickKm:+pKm.toFixed(1),km:+tKm.toFixed(1),
+   paid:+paid.toFixed(1), ratio: (tot+paid)>0 ? +(tot/(tot+paid)*100).toFixed(1) : null,
+   brk:+brk.toFixed(1), brkN:bn};
+}
+function drawDead(){
+ const box=document.getElementById('deadbox'); if(!box) return;
+ const D=deadStats(trips.filter(t=>t.end));
+ if(!D.n&&!D.brkN){ box.innerHTML='<div class="mt" style="color:var(--faint);font-size:11px">운행이 쌓이면 공차 구간이 나뉘어 표시됩니다</div>'; return; }
+ const pct=v=>D.tot>0?(v/D.tot*100).toFixed(0)+'%':'-';
+ box.innerHTML=
+  `<div class="shrow"><span>배회 공차 <i style="color:var(--faint)">하차 → 콜 수신</i></span>`+
+   `<b class="mono">${D.roam.toFixed(0)}분<small style="color:var(--dim)"> ${pct(D.roam)}${D.roamKm?' · '+D.roamKm.toFixed(1)+'km':''}</small></b></div>`+
+  `<div class="shrow"><span>픽업 공차 <i style="color:var(--faint)">콜 수신 → 승객 탑승</i></span>`+
+   `<b class="mono">${D.split?D.pick.toFixed(0)+'분':'-'}<small style="color:var(--dim)"> ${D.split?pct(D.pick):'콜 버튼 미사용'}${D.split&&D.pickKm?' · '+D.pickKm.toFixed(1)+'km':''}</small></b></div>`+
+  `<div class="shrow tot"><span>총 공차</span><b class="mono">${D.tot.toFixed(0)}분`+
+   `<small style="color:var(--dim)"> ${D.km?D.km.toFixed(1)+'km · ':''}${D.ratio!=null?'공차율 '+D.ratio.toFixed(0)+'%':''}</small></b></div>`+
+  (D.split<D.n?`<div class="mt" style="color:var(--amber);font-size:10px">${D.n-D.split}건은 콜 버튼을 누르지 않아 나누지 못했습니다 — 전부 배회로 셉니다</div>`:'')+
+  (D.brkN?`<div class="mt" style="color:var(--faint);font-size:10px">2시간 넘는 공백 ${D.brkN}건(${Math.round(D.brk)}분)은 휴식으로 보고 공차에서 뺐습니다</div>`:'');
+}
+
+/* ── 타임라인 — 하루 전체를 시간순으로 복원한다 ── */
+function timeline(day){
+ const ymd=day||BIZ;
+ const a=new Date(ymd+'T00:00:00').getTime(), b=a+86400000;
+ const ev=[];
+ const inDay=ts=>ts!=null&&ts>=a&&ts<b;
+ for(const x of shifts){ if(inDay(x.s)) ev.push({t:x.s,k:'shift',v:'운행 시작'});
+  if(x.e&&inDay(x.e)) ev.push({t:x.e,k:'shift',v:'운행 종료'+(x.auto?' (자동)':'')}); }
+ for(const r of rests){ if(inDay(r.s)) ev.push({t:r.s,k:'rest',v:'휴게 시작'});
+  if(r.e&&inDay(r.e)) ev.push({t:r.e,k:'rest',v:'휴게 종료',dur:(r.e-r.s)/60000}); }
+ if(restOn&&inDay(restOn)) ev.push({t:restOn,k:'rest',v:'휴게 시작'});
+ for(const f of (fuels||[])){ const ts=f.t||f.at;
+  if(inDay(ts)) ev.push({t:ts,k:'fuel',v:'주유·충전',amt:f.amt,cost:(f.amt||0)*(f.price||0)}); }
+ const T=allTrips().filter(t=>tripYMD(t)===ymd);
+ for(const t of T){
+  const d=deadSplit(t);
+  if(t.dead&&t.dead.min>0&&t.start){
+   const s0=t.start-(t.dead.min*60000);
+   if(d&&d.brk!=null){
+    ev.push({t:s0,k:'rest',v:'공백 · 휴식으로 분류 (공차 제외)',dur:d.brk});
+   } else if(d&&d.split&&d.pick!=null){
+    ev.push({t:s0,k:'roam',v:'배회',dur:d.roam,km:d.roamKm,dir:t.dead.roamDir||t.dead.dir});
+    ev.push({t:t.start-(d.pick*60000),k:'pick',v:'콜 수신 → 픽업 이동',dur:d.pick,km:d.pickKm,dir:t.dead.pickDir});
+   } else ev.push({t:s0,k:'roam',v:'공차',dur:d?d.tot:t.dead.min,km:t.dead.km,dir:t.dead.dir});
+  }
+  if(inDay(t.start)||inDay(t.end)){
+   ev.push({t:t.start,k:'ride',v:'승차',place:t.from,addr:t.fromAddr,
+     dur:(t.end&&t.start)?(t.end-t.start)/60000:null,fare:t.fare,to:t.to,toAddr:t.toAddr,
+     wx:(t.weather||{}).cls,tag:t.tag});
+  }
+ }
+ return ev.filter(e=>e.t!=null).sort((x,y)=>x.t-y.t);
+}
+const TL_ICON={shift:'▶',rest:'❚❚',fuel:'⛽',roam:'···',pick:'→',ride:'●'};
+function drawTimeline(){
+ const box=document.getElementById('tlbox'); if(!box) return;
+ const ev=timeline(BIZ);
+ if(!ev.length){ box.innerHTML='<div class="empty">오늘 기록이 아직 없습니다</div>'; return; }
+ box.innerHTML=ev.map(e=>{
+  let main='',sub='';
+  if(e.k==='ride'){ main=`<b>${e.place||'?'}</b> → <b>${e.to||'운행 중'}</b>`;
+   sub=[e.dur!=null?e.dur.toFixed(0)+'분':'', e.fare?fmt(e.fare)+'원':'',
+        e.wx||'', e.tag&&e.tag.call||''].filter(Boolean).join(' · ');
+   if(e.addr||e.toAddr) sub=((e.addr||'?')+' → '+(e.toAddr||'?'))+(sub?' · '+sub:''); }
+  else if(e.k==='roam'||e.k==='pick'){ main=e.v;
+   sub=[e.dur!=null?e.dur.toFixed(0)+'분':'',e.km?e.km.toFixed(1)+'km':'',e.dir||''].filter(Boolean).join(' · '); }
+  else { main=e.v; sub=[e.dur?e.dur.toFixed(0)+'분':'', e.amt?e.amt+FU().u:'',
+    e.cost?fmt(Math.round(e.cost))+'원':''].filter(Boolean).join(' · '); }
+  return `<div class="tl ${e.k}"><span class="ti">${TL_ICON[e.k]||'·'}</span>
+    <span class="tt mono">${HM(e.t)}</span>
+    <span class="tb"><span class="tm">${main}</span>${sub?`<span class="ts">${sub}</span>`:''}</span></div>`;
+ }).join('');
+}
+function csvTimeline(day){
+ const ev=timeline(day||BIZ);
+ const H=['날짜','시각','구분','내용','분','km','방향','요금','승차지','승차지점','하차지','하차지점','날씨','호출'];
+ const rows=ev.map(e=>[day||BIZ,HM(e.t),
+   {shift:'근무',rest:'휴게',fuel:'주유',roam:'배회공차',pick:'픽업공차',ride:'실차'}[e.k]||e.k,
+   e.v||(e.k==='ride'?'승차→하차':''),e.dur!=null?Math.round(e.dur*10)/10:'',
+   e.km!=null?e.km:'',e.dir||'',e.fare||'',e.place||'',e.addr||'',e.to||'',e.toAddr||'',e.wx||'',
+   (e.tag&&e.tag.call)||'']);
+ return [H.join(',')].concat(rows.map(r=>r.map(CSVQ).join(','))).join('\n');
+}
+
+/* ═══════════ 기간 집계 · 지역(행정구역) · 연쇄 이동 · 분석용 내보내기 (v24) ═══════════ */
+
+/* ── 기간 선택 ── */
+const PERIODS=[
+ {k:'d',  n:'오늘'},
+ {k:'w',  n:'이번주'},
+ {k:'lw', n:'지난주'},
+ {k:'m',  n:'이번달'},
+ {k:'lm', n:'지난달'}];
+let anPeriod='d';
+const KEY_PER='gongcha:anperiod';
+const ISO=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+// 운행이 어느 날짜에 귀속되는가 — 기본은 하차(운행 완료) 시점.
+// 요금이 확정되는 시점이 하차이기 때문이다. 설정에서 승차 기준으로 바꿀 수 있고,
+// 원자료에 승차·하차 시각이 모두 남으므로 나중에 어느 쪽으로든 다시 계산할 수 있다.
+function tripYMD(t){
+ const basis=(typeof CFG!=='undefined'&&CFG.basis)||'end';
+ const ts = basis==='start' ? (t.start||t.end) : (t.end||t.start);
+ return bizDate(ts||Date.now());
+}
+function monday(off){ const d=new Date(); d.setDate(d.getDate()-((d.getDay()+6)%7)+off*7);
+ d.setHours(0,0,0,0); return d; }
+function periodWin(p){
+ const now=new Date(), Y=now.getFullYear(), M=now.getMonth()+1;
+ if(p==='w'||p==='lw'){
+  const st=monday(p==='w'?0:-1), en=new Date(st); en.setDate(en.getDate()+6);
+  const a=ISO(st), b=ISO(en);
+  return {test:ymd=>ymd>=a&&ymd<=b, lab:(p==='w'?'이번주 ':'지난주 ')+a.slice(5)+'~'+b.slice(5)};
+ }
+ if(p==='m'||p==='lm'){
+  const d=new Date(Y,M-1+(p==='m'?0:-1),1);
+  const pre=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  return {test:ymd=>ymd.startsWith(pre), lab:(d.getMonth()+1)+'월'+(p==='lm'?' (지난달)':'')};
+ }
+ const today=bizDate(Date.now());
+ return {test:ymd=>ymd===today, lab:'오늘 '+today.slice(5)};
+}
+let _pw=periodWin(anPeriod);
+function inPeriod(t){ return _pw.test(tripYMD(t)); }
+function inPeriodYMD(ymd){ return ymd? _pw.test(ymd) : false; }
+// 직전 동일 구간 (증감 비교용)
+function prevWin(p){
+ if(p==='d'){ const d=new Date(); d.setDate(d.getDate()-1); const y=ISO(d); return ymd=>ymd===y; }
+ if(p==='w'||p==='lw'){ const st=monday(p==='w'?-1:-2), en=new Date(st); en.setDate(en.getDate()+6);
+  const a=ISO(st),b=ISO(en); return ymd=>ymd>=a&&ymd<=b; }
+ if(p==='m'||p==='lm'){ const now=new Date();
+  const d=new Date(now.getFullYear(),now.getMonth()+(p==='m'?-1:-2),1);
+  const pre=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  return ymd=>ymd.startsWith(pre); }
+ return null;
+}
+function drawPchips(){
+ const box=document.getElementById('pchips'); if(!box) return;
+ box.innerHTML=PERIODS.map(p=>`<button class="pchip ${p.k===anPeriod?'on':''}" data-per="${p.k}">${p.n}</button>`).join('');
+ box.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{
+  anPeriod=b.dataset.per; _pw=periodWin(anPeriod); Store.set(KEY_PER,anPeriod);
+  drawPchips(); renderAnal(); });
+}
+
+/* ── 지역: 행정구역 기준 (서울 25구 + 경기 31시군 + 인천) ──
+   유형 라벨은 주관적이라 쓰지 않는다. 좌표 → 시군구 → 권역으로만 묶는다.
+   서울 좌표는 실제 격자 데이터의 구 값을 그대로 쓰고(정확),
+   격자가 없는 경기·인천은 시군구 중심점 최근접으로 정한다(근사). */
+const SIGU=[
+ // 서울 25
+ {n:'종로구',k:'서울도심',la:37.5735,lo:126.9790},{n:'중구',k:'서울도심',la:37.5638,lo:126.9976},
+ {n:'용산구',k:'서울도심',la:37.5326,lo:126.9906},
+ {n:'성동구',k:'서울동북',la:37.5634,lo:127.0369},{n:'광진구',k:'서울동북',la:37.5385,lo:127.0823},
+ {n:'동대문구',k:'서울동북',la:37.5744,lo:127.0396},{n:'중랑구',k:'서울동북',la:37.6066,lo:127.0927},
+ {n:'성북구',k:'서울동북',la:37.5894,lo:127.0167},{n:'강북구',k:'서울동북',la:37.6396,lo:127.0257},
+ {n:'도봉구',k:'서울동북',la:37.6688,lo:127.0471},{n:'노원구',k:'서울동북',la:37.6542,lo:127.0568},
+ {n:'은평구',k:'서울서북',la:37.6027,lo:126.9291},{n:'서대문구',k:'서울서북',la:37.5791,lo:126.9368},
+ {n:'마포구',k:'서울서북',la:37.5637,lo:126.9084},
+ {n:'양천구',k:'서울서남',la:37.5170,lo:126.8664},{n:'강서구',k:'서울서남',la:37.5509,lo:126.8495},
+ {n:'구로구',k:'서울서남',la:37.4954,lo:126.8874},{n:'금천구',k:'서울서남',la:37.4569,lo:126.8956},
+ {n:'영등포구',k:'서울서남',la:37.5264,lo:126.8962},{n:'동작구',k:'서울서남',la:37.5124,lo:126.9393},
+ {n:'관악구',k:'서울서남',la:37.4784,lo:126.9516},
+ {n:'서초구',k:'서울동남',la:37.4837,lo:127.0324},{n:'강남구',k:'서울동남',la:37.5172,lo:127.0473},
+ {n:'송파구',k:'서울동남',la:37.5145,lo:127.1059},{n:'강동구',k:'서울동남',la:37.5301,lo:127.1238},
+ // 경기 31
+ {n:'남양주시',k:'경기동부',la:37.6360,lo:127.2165},{n:'구리시',k:'경기동부',la:37.5943,lo:127.1296},
+ {n:'하남시',k:'경기동부',la:37.5393,lo:127.2148},{n:'광주시',k:'경기동부',la:37.4292,lo:127.2550},
+ {n:'양평군',k:'경기동부',la:37.4917,lo:127.4875},{n:'여주시',k:'경기동부',la:37.2983,lo:127.6370},
+ {n:'이천시',k:'경기동부',la:37.2721,lo:127.4350},{n:'가평군',k:'경기동부',la:37.8315,lo:127.5095},
+ {n:'성남시',k:'경기남부',la:37.4200,lo:127.1267},{n:'용인시',k:'경기남부',la:37.2411,lo:127.1776},
+ {n:'수원시',k:'경기남부',la:37.2636,lo:127.0286},{n:'화성시',k:'경기남부',la:37.1995,lo:126.8314},
+ {n:'오산시',k:'경기남부',la:37.1499,lo:127.0773},{n:'평택시',k:'경기남부',la:36.9921,lo:127.1129},
+ {n:'안성시',k:'경기남부',la:37.0080,lo:127.2797},{n:'안양시',k:'경기남부',la:37.3943,lo:126.9568},
+ {n:'과천시',k:'경기남부',la:37.4292,lo:126.9877},{n:'의왕시',k:'경기남부',la:37.3448,lo:126.9682},
+ {n:'군포시',k:'경기남부',la:37.3617,lo:126.9352},
+ {n:'부천시',k:'경기서부',la:37.5035,lo:126.7660},{n:'광명시',k:'경기서부',la:37.4787,lo:126.8646},
+ {n:'시흥시',k:'경기서부',la:37.3800,lo:126.8029},{n:'안산시',k:'경기서부',la:37.3219,lo:126.8309},
+ {n:'김포시',k:'경기서부',la:37.6152,lo:126.7156},
+ {n:'고양시',k:'경기북부',la:37.6584,lo:126.8320},{n:'파주시',k:'경기북부',la:37.7599,lo:126.7800},
+ {n:'의정부시',k:'경기북부',la:37.7381,lo:127.0337},{n:'양주시',k:'경기북부',la:37.7852,lo:127.0458},
+ {n:'동두천시',k:'경기북부',la:37.9036,lo:127.0606},{n:'포천시',k:'경기북부',la:37.8949,lo:127.2003},
+ {n:'연천군',k:'경기북부',la:38.0965,lo:127.0748},
+ // 인천
+ {n:'인천 중구',k:'인천',la:37.4738,lo:126.6216},{n:'인천공항·영종',k:'인천',la:37.4570,lo:126.4700},
+ {n:'인천 동구',k:'인천',la:37.4740,lo:126.6433},{n:'미추홀구',k:'인천',la:37.4635,lo:126.6503},
+ {n:'연수구',k:'인천',la:37.4100,lo:126.6784},{n:'남동구',k:'인천',la:37.4471,lo:126.7314},
+ {n:'부평구',k:'인천',la:37.5070,lo:126.7219},{n:'계양구',k:'인천',la:37.5374,lo:126.7377},
+ {n:'인천 서구',k:'인천',la:37.5455,lo:126.6759},{n:'강화군',k:'인천',la:37.7471,lo:126.4880}
+];
+const SEOUL_GU=SIGU.filter(x=>x.k.startsWith('서울')).map(x=>x.n);
+const KWON_OF={}; SIGU.forEach(x=>KWON_OF[x.n]=x.k);
+const KWONS=['서울도심','서울동북','서울서북','서울서남','서울동남','경기동부','경기남부','경기서부','경기북부','인천'];
+/* 넓은 시·군은 중심점 하나로는 옆 시에 붙어버린다(다산 → 구리).
+   생활권 앵커를 여러 개 두고 그중 가까운 것으로 판정한다. */
+const ANCHOR=[
+ ['남양주시',37.6136,127.1516],['남양주시',37.6480,127.1240],['남양주시',37.6480,127.2470],
+ ['남양주시',37.6560,127.3120],['남양주시',37.5900,127.2130],['남양주시',37.7350,127.1900],
+ ['구리시',37.6020,127.1400],['구리시',37.6390,127.1080],
+ ['하남시',37.5620,127.1930],['하남시',37.5400,127.2080],
+ ['고양시',37.6580,126.7740],['고양시',37.6750,126.7500],['고양시',37.6360,126.8320],['고양시',37.6520,126.8950],
+ ['용인시',37.3220,127.0980],['용인시',37.2800,127.1150],['용인시',37.2340,127.2010],
+ ['성남시',37.3820,127.1190],['성남시',37.3950,127.1112],['성남시',37.4500,127.1450],['성남시',37.4370,127.1580],
+ ['수원시',37.2510,127.0710],['수원시',37.2960,127.0480],['수원시',37.2570,126.9720],['수원시',37.3050,126.9930],
+ ['화성시',37.2003,127.0980],['화성시',37.2110,126.9500],['화성시',37.1300,126.9200],
+ ['파주시',37.7180,126.7400],['파주시',37.8560,126.7860],
+ ['김포시',37.6400,126.6700],['김포시',37.6450,126.6300],['김포시',37.6170,126.7350],
+ ['광주시',37.4100,127.2380],['광주시',37.3480,127.3400],
+ ['안산시',37.3160,126.8320],['안산시',37.3100,126.8600],
+ ['시흥시',37.3450,126.7350],['시흥시',37.3690,126.7280],
+ ['의정부시',37.7550,127.0870],['양주시',37.8000,127.0700],['양주시',37.8430,127.0560],
+ ['평택시',37.0730,127.0630],['평택시',36.9880,126.9150],
+ ['안양시',37.4020,126.9220],['부천시',37.4870,126.7830],['광명시',37.4200,126.8850],
+ ['인천공항·영종',37.4491,126.4509],['인천공항·영종',37.4930,126.5390]
+].map(([n,la,lo])=>({n,la,lo,k:KWON_OF[n]}));
+const SPOTS=SIGU.concat(ANCHOR);
+/* TMAP gu_gun 은 '강남구' 또는 일반구('영통구')로 온다. 시 단위로 되돌린다. */
+const GEN_GU={'장안구':'수원시','권선구':'수원시','팔달구':'수원시','영통구':'수원시',
+ '수정구':'성남시','중원구':'성남시','분당구':'성남시','만안구':'안양시','동안구':'안양시',
+ '상록구':'안산시','단원구':'안산시','덕양구':'고양시','일산동구':'고양시','일산서구':'고양시',
+ '처인구':'용인시','기흥구':'용인시','수지구':'용인시'};
+const INCHEON_GU={'중구':'인천 중구','동구':'인천 동구','서구':'인천 서구','미추홀구':'미추홀구',
+ '연수구':'연수구','남동구':'남동구','부평구':'부평구','계양구':'계양구','강화군':'강화군'};
+function guNorm(gu,full){
+ if(!gu) return null;
+ gu=String(gu).trim();
+ const f=String(full||'');
+ if(/인천/.test(f)&&INCHEON_GU[gu]) return INCHEON_GU[gu];
+ if(GEN_GU[gu]) return GEN_GU[gu];
+ if(KWON_OF[gu]) return gu;
+ const hit=SIGU.find(x=>gu.includes(x.n)||x.n.includes(gu));
+ return hit? hit.n : null;
+}
+// 서울 격자 데이터의 동→구 표. TMAP은 '종로1.2.3.4가동', 격자는 '종로1·2·3·4가동'으로 적어 표기를 맞춘다.
+let DONG2GU=null;
+const dongKey=n=>String(n||'').replace(/[·.\s]/g,'');
+function dongGu(n){
+ if(!n) return null;
+ if(!DONG2GU){ DONG2GU={}; for(const g of G){ const k=dongKey(g.n); if(!DONG2GU[k]) DONG2GU[k]=g.g; else if(DONG2GU[k]!==g.g) DONG2GU[k]='?'; } }
+ const v=DONG2GU[dongKey(n)];
+ return v&&v!=='?'&&KWON_OF[v] ? v : null;      // 같은 이름이 두 구에 있으면 쓰지 않는다
+}
+function regionOf(la,lo,guHint,dong){
+ const g2=guNorm(guHint);
+ if(g2&&KWON_OF[g2]) return {si:g2,kw:KWON_OF[g2],src:'주소'};
+ const g3=dongGu(dong);
+ if(g3) return {si:g3,kw:KWON_OF[g3],src:'동이름'};
+ if(la==null||lo==null) return null;
+ // 서울 격자(실측 1,644점)와 경기·인천 앵커를 한 판에 놓고 가장 가까운 쪽을 고른다.
+ // 격자를 먼저 보면 한강 건너 미사가 강동구로 넘어간다 — 거리로만 비교해야 경계가 맞는다.
+ let best=null,bd=1e9,src='근사';
+ try{ const g=nearGrid(la,lo);
+  if(g&&SEOUL_GU.includes(g.g)){ bd=dist(la,lo,g.la,g.lo); best={n:g.g,k:KWON_OF[g.g]}; src='격자'; }
+ }catch(e){}
+ for(const r of SPOTS){ const d=dist(la,lo,r.la,r.lo); if(d<bd){bd=d;best=r;src='근사';} }
+ return best? {si:best.n,kw:best.k,src} : null;
+}
+function fromReg(t){ return regionOf(t.fla,t.flo,t.fromGu,t.from); }
+function toReg(t){ return regionOf(t.tla,t.tlo,t.toGu,t.to); }
+const siOf=r=>r?r.si:'미상', kwOf=r=>r?r.kw:'미상';
+
+/* 시간대 구간 */
+const ZBANDS=[{k:'all',n:'전체',h:null},{k:'am',n:'출근 06-09',h:[6,9]},{k:'day',n:'주간 09-17',h:[9,17]},
+ {k:'pm',n:'퇴근 17-20',h:[17,20]},{k:'eve',n:'저녁 20-24',h:[20,24]},{k:'night',n:'심야 00-06',h:[0,6]}];
+let zBand='all';
+function bandOf(h){ const b=ZBANDS.find(x=>x.h&&h>=x.h[0]&&h<x.h[1]); return b?b.k:'night'; }
+function inBand(h){ const b=ZBANDS.find(x=>x.k===zBand); return !b||!b.h ? true : (h>=b.h[0]&&h<b.h[1]); }
+
+/* ── 지역별 집계 ── */
+function regAgg(T,side,level){
+ const M={};
+ for(const t of T){
+  const r = side==='from'? fromReg(t) : toReg(t);
+  const ts= side==='from'? t.start : (t.end||t.start);
+  if(!r||!ts) continue;
+  const h=new Date(ts).getHours(); if(!inBand(h)) continue;
+  const k = level==='kw'? r.kw : r.si;
+  const m=M[k]||(M[k]={n:0,fare:0,dead:0,dn:0});
+  m.n++; m.fare+=t.fare||0;
+  if(t.dead&&t.dead.min!=null&&t.dead.min>=0&&t.dead.min<=120){ m.dead+=t.dead.min; m.dn++; }
+ }
+ return Object.entries(M).map(([k,v])=>({k,n:v.n,avg:v.n?Math.round(v.fare/v.n):0,
+   dead:v.dn?+(v.dead/v.dn).toFixed(1):null})).sort((a,b)=>b.n-a.n);
+}
+function drawRegRank(el,rows){
+ const e=document.getElementById(el); if(!e) return;
+ if(!rows.length){ e.innerHTML='<div class="empty">기록이 부족합니다</div>'; return; }
+ const mx=Math.max(...rows.map(r=>r.n));
+ e.innerHTML=rows.slice(0,20).map(r=>`<div class="r"><span class="nm">${r.k}</span>
+   <span class="bar"><i style="width:${Math.round(r.n/mx*100)}%"></i></span>
+   <span class="vv mono">${r.n}건</span>
+   <span class="vv mono">${fmt(r.avg)}</span>
+   <span class="vv mono" style="color:var(--dim)">${r.dead==null?'-':r.dead+'분'}</span></div>`).join('');
+}
+
+/* ── 권역 OD 매트릭스 ── */
+function drawMatrix(T){
+ const host=document.getElementById('zMatrix'); if(!host) return;
+ const M={}, tot={};
+ for(const t of T){
+  if(!t.end) continue;
+  const h=new Date(t.start||t.end).getHours(); if(!inBand(h)) continue;
+  const a=kwOf(fromReg(t)), b=kwOf(toReg(t));
+  if(a==='미상'||b==='미상') continue;
+  M[a+'>'+b]=(M[a+'>'+b]||0)+1; tot[a]=(tot[a]||0)+1;
+ }
+ const rows=KWONS.filter(k=>tot[k]).sort((a,b)=>tot[b]-tot[a]);
+ if(!rows.length){ host.innerHTML='<div class="empty">기록이 부족합니다</div>';
+   const n=document.getElementById('zmxNote'); if(n)n.textContent=''; return; }
+ const colSet={}; Object.keys(M).forEach(k=>{const c=k.split('>')[1]; colSet[c]=(colSet[c]||0)+M[k];});
+ const cols=KWONS.filter(k=>colSet[k]).sort((a,b)=>colSet[b]-colSet[a]);
+ let h='<table class="zmx"><tr><th class="rh">승차 ＼ 하차</th>'+cols.map(c=>`<th>${c.replace('서울','서울 ').replace('경기','경기 ')}</th>`).join('')+'<th>계</th></tr>';
+ for(const r of rows){
+  h+=`<tr><th class="rh">${r.replace('서울','서울 ').replace('경기','경기 ')}</th>`;
+  for(const c of cols){ const v=M[r+'>'+c]||0; const pct=tot[r]?v/tot[r]*100:0;
+   h+=`<td class="${v===0?'z':pct>=25?'hot':''}">${v||'·'}</td>`; }
+  h+=`<td class="mono">${tot[r]}</td></tr>`;
+ }
+ host.innerHTML=h+'</table>';
+ const note=document.getElementById('zmxNote');
+ if(note) note.textContent='행=승차 권역, 열=하차 권역. 그 행의 25% 이상이면 강조됩니다. 서울은 실제 격자 데이터의 구, 경기·인천은 시군 중심점 최근접으로 판정합니다.';
+}
+
+/* ── 연쇄 이동 ── */
+function chainPairs(T){
+ const byDay={};
+ for(const t of T){ if(!t.end) continue; const d=tripYMD(t); (byDay[d]||(byDay[d]=[])).push(t); }
+ const out=[];
+ for(const d in byDay){
+  const arr=byDay[d].sort((a,b)=>(a.start||0)-(b.start||0));
+  for(let i=0;i<arr.length-1;i++){
+   const a=arr[i], b=arr[i+1];
+   if(!a.to||!b.from) continue;
+   let gap=b.dead&&b.dead.min!=null ? b.dead.min : (a.end&&b.start? (b.start-a.end)/60000 : null);
+   // 음수(기록 꼬임)는 버리고, 2시간을 넘으면 휴게·식사로 보아 연쇄에서 제외한다
+   if(gap!=null&&(gap<0||gap>120)) continue;
+   out.push({drop:a.to,pick:b.from,next:b.to||null,
+             dropR:toReg(a), pickR:fromReg(b), nextR:toReg(b),
+             hour:new Date(a.end).getHours(),
+             gap:gap!=null?+gap.toFixed(1):null,fare:b.fare||0,dir:b.dead&&b.dead.dir||null});
+  }
+ }
+ return out;
+}
+function drawChainZone(T){
+ const el=document.getElementById('chZone'); if(!el) return;
+ const P=chainPairs(T).filter(p=>inBand(p.hour)&&p.dropR&&p.pickR);
+ if(P.length<5){ el.innerHTML='<div class="empty">연쇄 분석은 연속 운행 5쌍 이상 필요합니다<br>현재 '+P.length+'쌍</div>'; return; }
+ const M={};
+ for(const p of P){
+  const a=p.dropR.si, b=p.pickR.si;
+  const m=M[a]||(M[a]={n:0,to:{}}); m.n++;
+  const c=m.to[b]||(m.to[b]={n:0,gap:0,gn:0,fare:0});
+  c.n++; c.fare+=p.fare; if(p.gap!=null){c.gap+=p.gap;c.gn++;}
+ }
+ const rows=[];
+ for(const a in M) for(const b in M[a].to){ const c=M[a].to[b];
+   rows.push({a,b,n:c.n,pct:c.n/M[a].n*100,gap:c.gn?c.gap/c.gn:null,avg:Math.round(c.fare/c.n)}); }
+ rows.sort((x,y)=>y.n-x.n);
+ el.innerHTML=rows.slice(0,16).map(r=>`<div class="chn">
+   <span class="cp"><b>${r.a}</b> 하차 → <b>${r.b}</b> 승차</span>
+   <span class="cv">${r.pct.toFixed(0)}%</span>
+   <span class="cm">${r.n}회 · ${r.gap==null?'-':r.gap.toFixed(0)+'분'}</span>
+   <span class="cm mono">${fmt(r.avg)}</span></div>`).join('')
+   +'<div class="mt" style="color:var(--dim);font-size:10px;margin-top:6px">%는 그 시군구에서 하차했을 때 다음 승차가 어디였는지의 비율입니다. 분=평균 공차 시간, 금액=다음 콜 건당.</div>';
+}
+function drawChainPath(T){
+ const el=document.getElementById('chPath'); if(!el) return;
+ const P=chainPairs(T).filter(p=>p.next&&inBand(p.hour));
+ if(P.length<5){ el.innerHTML='<div class="empty">3단 경로는 연속 운행 5쌍 이상 필요합니다<br>현재 '+P.length+'쌍</div>'; return; }
+ const M={};
+ for(const p of P){ const k=`${p.drop}|${p.pick}|${p.next}`;
+  const m=M[k]||(M[k]={n:0,gap:0,gn:0,fare:0}); m.n++; m.fare+=p.fare;
+  if(p.gap!=null){m.gap+=p.gap;m.gn++;} }
+ const rows=Object.entries(M).map(([k,v])=>{const[a,b,c]=k.split('|');
+   return {a,b,c,n:v.n,gap:v.gn?v.gap/v.gn:null,avg:Math.round(v.fare/v.n)}})
+   .filter(r=>r.n>=2).sort((x,y)=>y.n-x.n);
+ if(!rows.length){ el.innerHTML='<div class="empty">2회 이상 반복된 3단 경로가 아직 없습니다</div>'; return; }
+ el.innerHTML=rows.slice(0,12).map(r=>`<div class="chn">
+   <span class="cp">${r.a} <b>→</b> ${r.b} <b>→</b> ${r.c}</span>
+   <span class="cv">${r.n}회</span>
+   <span class="cm">${r.gap==null?'-':r.gap.toFixed(0)+'분'}</span>
+   <span class="cm mono">${fmt(r.avg)}</span></div>`).join('')
+   +'<div class="mt" style="color:var(--dim);font-size:10px;margin-top:6px">동 단위 — 하차 지역 → 다음 승차 지역 → 그 목적지. 2회 이상 반복된 것만 보여줍니다.</div>';
+}
+
+/* ── 운행 탭 힌트: 현재 위치·시각 기준 다음 이동 ── */
+function chainHint(){
+ const box=document.getElementById('chHint'); if(!box) return;
+ const r = pos? regionOf(pos.la,pos.lo) : null;
+ if(!r){ box.hidden=true; return; }
+ const h=new Date().getHours(), bk=bandOf(h);
+ const P=chainPairs(allTrips()).filter(p=>bandOf(p.hour)===bk&&p.dropR&&p.pickR&&p.dropR.si===r.si);
+ if(P.length<3){ box.hidden=true; return; }
+ const M={};
+ for(const p of P){ const b=p.pickR.si;
+  const m=M[b]||(M[b]={n:0,gap:0,gn:0}); m.n++; if(p.gap!=null){m.gap+=p.gap;m.gn++;} }
+ const top=Object.entries(M).map(([k,v])=>({k,n:v.n,pct:v.n/P.length*100,
+   gap:v.gn?v.gap/v.gn:null})).sort((a,b)=>b.n-a.n).slice(0,2);
+ if(!top.length){ box.hidden=true; return; }
+ const bn=((ZBANDS.find(x=>x.k===bk)||{}).n||'').split(' ')[0];
+ box.innerHTML=`지금 <b>${r.si}</b> · ${bn}대 — 지난 기록에서 다음 콜은 `+
+  top.map(t=>`<b>${t.k}</b> ${t.pct.toFixed(0)}%${t.gap!=null?` (공차 ${t.gap.toFixed(0)}분)`:''}`).join(' · ')+
+  ` <span style="color:var(--dim)">· 표본 ${P.length}쌍</span>`;
+ box.hidden=false;
+}
+
+/* ── 분석용 내보내기 ──
+   앱 안에서 다 보여주려 하지 않는다. 원자료를 한 줄 한 건으로 내보내면
+   기간·지역·조합을 가리지 않고 바깥에서 얼마든지 깊게 분석할 수 있다. */
+const CSVQ=v=>{ if(v==null) return ''; const s=String(v);
+ return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+const HMS=ts=>{ if(!ts) return ''; const d=new Date(ts);
+ return ISO(d)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')
+   +':'+String(d.getSeconds()).padStart(2,'0'); };
+const TRIP_COLS=[
+ '업무일','승차일시','하차일시','요일','요일유형','공휴일명','시즌',
+ '승차동','승차시군구','승차권역','승차판정','승차위도','승차경도','승차지점','승차건물','승차도로명','승차지번',
+ '하차동','하차시군구','하차권역','하차판정','하차위도','하차경도','하차지점','하차건물','하차도로명','하차지번',
+ '요금','피크배수','피크출처','탑승분','직선km','실차km','거리출처','예상대기분',
+ '공차분','공차km','공차직선km','공차속도kmh','공차방향','공차분리','공차시작',
+ '배회분','배회km','배회방향','픽업분','픽업km','픽업방향',
+ '날씨','강수형태','강수mm','기온','하늘','풍속','습도',
+ '호출','승객','결제','기분','행사'];
+function tripRow(t){
+ const fr=fromReg(t), tr=toReg(t), d=t.start?new Date(t.start):null;
+ const dc=t.daycontext||{}, w=t.weather||{}, g=t.tag||{}, de=t.dead||{}, ca=t.call||{};
+ const ride=(t.start&&t.end)? Math.round((t.end-t.start)/60000*10)/10 : '';
+ const sk=(t.fla!=null&&t.tla!=null)? Math.round(dist(t.fla,t.flo,t.tla,t.tlo)*100)/100 : '';
+ return [tripYMD(t),HMS(t.start),HMS(t.end),
+  d?['일','월','화','수','목','금','토'][d.getDay()]:'',dc.day_type||'',dc.holiday_name||'',dc.season_tag||'',
+  t.from||'',siOf(fr),kwOf(fr),(fr&&fr.src)||'',t.fla??'',t.flo??'',t.fromAddr||'',t.fromBldg||'',t.fromRoad||'',t.fromJibun||'',
+  t.to||'',siOf(tr),kwOf(tr),(tr&&tr.src)||'',t.tla??'',t.tlo??'',t.toAddr||'',t.toBldg||'',t.toRoad||'',t.toJibun||'',
+  t.fare??'',peakOf(t)??'',t.peakSrc||'',ride,sk,t.km??t.pathKm??'',t.kmSrc||'',t.wait??'',
+  de.min??'',de.km??'',de.straightKm??'',de.kmh??'',de.dir||'',
+  de.min!=null&&de.min>BREAK_MIN?'휴식':(de.split?'분리':(de.min!=null?'미분리':'')),de.fromName||'',
+  de.roamMin??ca.roamMin??(de.split?'':de.min??''),de.roamKm??ca.roamKm??'',de.roamDir??ca.roamDir??'',
+  de.pickMin??ca.pickMin??'',de.pickKm??ca.pickKm??'',de.pickDir??ca.pickDir??'',
+  w.cls||'',w.pty??'',w.rn1??'',w.t1h??'',w.sky??'',w.wsd??'',w.reh??'',
+  g.call||'',g.pax||'',g.pay||'',g.mood||'',(t.events||[]).join(';')];
+}
+const DAY_COLS=['업무일','매출','건수','건당','근무시작','근무종료','근무분','운행시간','실차시간','승차율',
+ '총km','실차km','공차율(거리)','총공차분','배회분','픽업분','공차율(시간)','평균공차분','연료비','연료량','연비'];
+function dayRow(h){
+ const ride=h.hours>0?((h.paidSec||0)/3600)/h.hours*100:'';
+ const deadp=h.km>0?(1-(h.paidKm||0)/h.km)*100:'';
+ const n=h.trips??h.n;
+ return [h.date,h.rev??'',n??'',n?Math.round((h.rev||0)/n):'',
+  h.shiftFrom?HM(h.shiftFrom):'',h.shiftTo?HM(h.shiftTo):'',h.shiftMin??'',
+  h.hours??'',h.paidSec?Math.round(h.paidSec/36)/100:'',ride===''?'':ride.toFixed(1),
+  h.km??'',h.paidKm??'',deadp===''?'':deadp.toFixed(1),
+  h.deadMin??'',h.roamMin??'',h.pickMin??'',h.deadRatioT??'',h.gap??'',
+  h.fuelCost??'',h.fuelAmt??'',(h.fuelAmt>0&&h.km>0)?(h.km/h.fuelAmt).toFixed(2):''];
+}
+function dlText(text,name,mime){
+ try{
+  const b=new Blob(['﻿'+text],{type:(mime||'text/csv')+';charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1500);
+  return true;
+ }catch(e){ return false; }
+}
+function csvTrips(T){
+ return [TRIP_COLS.join(',')].concat(T.map(t=>tripRow(t).map(CSVQ).join(','))).join('\n');
+}
+function csvDays(H){
+ return [DAY_COLS.join(',')].concat(H.map(h=>dayRow(h).map(CSVQ).join(','))).join('\n');
+}
+function exportRange(which){
+ const ALL=allTrips().slice().sort((a,b)=>(a.start||0)-(b.start||0));
+ let T=ALL, H=history.slice().sort((a,b)=>a.date<b.date?-1:1), tag='전체';
+ if(which==='day'){ const y=bizDate(Date.now());
+   T=ALL.filter(t=>tripYMD(t)===y); H=H.filter(h=>h.date===y); tag=y; }
+ else if(which==='period'){ T=ALL.filter(inPeriod); H=H.filter(h=>inPeriodYMD(h.date)); tag=_pw.lab.replace(/[ ~]/g,''); }
+ if(!T.length&&!H.length){ alert('내보낼 기록이 없습니다.'); return; }
+ dlText(csvTrips(T),`gongcha_운행_${tag}.csv`);
+ setTimeout(()=>dlText(csvDays(H),`gongcha_일별_${tag}.csv`),600);
+ const st=document.getElementById('exStat');
+ if(st) st.innerHTML=`내보냄 — 운행 <b>${T.length}건</b> · 일별 <b>${H.length}일</b> (${tag})`;
+}
+function exportFullJSON(){
+ const ok=dlJSON({app:'gongcha',schema:2,exported:new Date().toISOString(),bizdate:bizDate(),
+   cfg:CFG,trips,tripArchive,history,expList,expense,odo,fuels,rests,shifts,obs,books,custs,
+   zonesNote:'지역은 좌표→시군구 자동 판정이므로 별도 분류표 없음'},
+   'gongcha_전체_'+bizDate()+'.json');
+ const st=document.getElementById('exStat');
+ if(st) st.innerHTML=ok?'전체 JSON을 내보냈습니다 — 앱 복원과 정밀 분석에 모두 쓸 수 있습니다.':'내보내기 실패';
+}
+function drawExport(T,H){
+ const st=document.getElementById('exStat'); if(!st) return;
+ const ALL=allTrips();
+ const withGeo=ALL.filter(t=>t.fla!=null&&t.tla!=null).length;
+ st.innerHTML=`보유 기록 — 운행 <b>${ALL.length}건</b> · 일별 <b>${history.length}일</b>`
+  +` · 좌표 있는 운행 ${withGeo}건`
+  +(ALL.length?` · 현재 기간 ${T.length}건`:'');
+}
+function initExport(){
+ const B=(id,fn)=>{const e=document.getElementById(id); if(e) e.onclick=fn;};
+ B('exDay',()=>exportRange('day'));
+ B('exPeriod',()=>exportRange('period'));
+ B('exAll',()=>exportRange('all'));
+ B('exJSON',exportFullJSON);
+}
+
+function initShift(){
+ const b=document.getElementById('shiftbtn');
+ if(b) b.onclick=async()=>{
+  if(openShift()){
+   if(!confirm('운행을 종료할까요?\n\n하루 결산은 자정(00:00)에 자동으로 넘어가므로,\n종료를 눌러도 오늘 기록은 그대로 남습니다.')) return;
+   await shiftEnd();
+  } else await shiftStart();
+ };
+ const c=document.getElementById('tlcsv');
+ if(c) c.onclick=()=>{ const t=csvTimeline(BIZ);
+  if(t.split('\n').length<2){ alert('오늘 기록이 없습니다.'); return; }
+  dlText(t,`gongcha_타임라인_${BIZ}.csv`); };
+ drawShift(); drawDead(); drawTimeline();
+ // 자정 전환을 놓치지 않도록 1분마다 확인한다 (앱을 켜둔 채 자정을 넘기는 경우)
+ setInterval(()=>{ checkRollover().then(ch=>{ if(ch) render(); }); }, 60000);
+ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) render(); });
+}
+async function initZone(){
+ const p=await Store.get(KEY_PER); if(p&&PERIODS.some(x=>x.k===p)) anPeriod=p;
+ _pw=periodWin(anPeriod);
+ drawPchips();
+ const bb=document.getElementById('zbands');
+ if(bb){ const paint=()=>bb.innerHTML=ZBANDS.map(b=>
+    `<button class="pchip ${b.k===zBand?'on':''}" data-band="${b.k}">${b.n}</button>`).join('');
+  paint();
+  bb.onclick=e=>{ const b=e.target.closest('[data-band]'); if(!b)return;
+   zBand=b.dataset.band; paint(); renderAnal(); }; }
+ initExport();
+}
+function renderZone(T){
+ drawRegRank('zFrom',regAgg(T,'from','si'));
+ drawRegRank('zTo',regAgg(T,'to','si'));
+ drawMatrix(T);
+ drawExport(T);
+}
+function renderChain(T){ drawChainZone(T); drawChainPath(T); }
+
+
+function drawPeriodCompare(ALL,T){
+ const el=document.getElementById('pcmp'); if(!el) return;
+ const pf=prevWin(anPeriod);
+ if(!pf||!T.length){ el.innerHTML=''; return; }
+ const P=ALL.filter(t=>pf(tripYMD(t)));
+ if(P.length<3){ el.innerHTML=''; return; }
+ const sum=A=>A.reduce((a,t)=>a+(t.fare||0),0);
+ const mk=(lab,a,b,unit,rev)=>{ if(b===0) return '';
+  const d=(a-b)/b*100, up=rev? d<0 : d>0;
+  return `<span style="margin-right:12px">${lab} <b class="mono" style="color:var(--${Math.abs(d)<3?'dim':up?'occ':'vac'})">${d>0?'+':''}${d.toFixed(0)}%</b></span>`;};
+ const aAvg=sum(T)/T.length, bAvg=sum(P)/P.length;
+ const dd=A=>{const x=A.map(t=>t.dead&&t.dead.min).filter(v=>v!=null);return x.length?x.reduce((a,b)=>a+b,0)/x.length:0;};
+ el.innerHTML=`<div class="mt" style="font-size:10.5px;color:var(--dim);margin:-4px 0 8px">직전 동일 기간 대비 · `
+  +mk('매출',sum(T),sum(P))+mk('건수',T.length,P.length)+mk('건당',aAvg,bAvg)
+  +mk('공차',dd(T),dd(P),'',true)+`</div>`;
+}
 function renderAnal(){
- const T=allTrips();
- const H=history.slice().sort((a,b)=>a.date<b.date?-1:1);
- document.getElementById('anrange').textContent=T.length?`운행 ${T.length}건 · ${H.length}일`:'';
+ _pw=periodWin(anPeriod);
+ const ALL=allTrips();
+ const T=ALL.filter(inPeriod);
+ const H=history.filter(h=>inPeriodYMD(h.date)).sort((a,b)=>a.date<b.date?-1:1);
+ document.getElementById('anrange').textContent=
+   `${_pw.lab} · 운행 ${T.length}건 · ${H.length}일`+(anPeriod!=='all'?` (전체 ${ALL.length}건)`:'');
+ try{ drawPeriodCompare(ALL,T); }catch(e){}
+ try{ renderZone(T); renderChain(T); }catch(e){ console.warn('zone/chain',e); }
  if(T.length<3){
   document.getElementById('anempty').innerHTML=
    '<div class="empty">운행 기록이 3건 이상 쌓이면<br>분석이 시작됩니다.<br><br>현재 '+T.length+'건</div>';
@@ -2897,22 +3716,25 @@ function todaySummary(){
  const done=trips.filter(t=>t.end);
  if(!done.length&&odo.total<0.5) return null;
  const rev=done.reduce((a,t)=>a+(t.fare||0),0);
- const fee=Math.round(rev*(expense.fee||0)/100);
- const cost=fee+(+expense.gas||0)+(+expense.toll||0)+(+expense.etc||0);
+ const cost=(+expense.gas||0)+(+expense.toll||0)+(+expense.etc||0);
  const st=trips[0]?.start??Date.now(), en=done.length?done[done.length-1].end:Date.now();
  const paidMs=done.reduce((a,t)=>a+(t.end-t.start),0);
+ const DS=deadStats(done); const SH=shiftSpanToday();
  return {date:BIZ, rev, trips:done.length, cost, net:rev-cost,
+  shiftMin:Math.round(SH.min), shiftFrom:SH.first||null, shiftTo:SH.open?null:(SH.last||null),
+  deadMin:DS.tot, roamMin:DS.roam, pickMin:DS.pick, deadSplitN:DS.split, deadRatioT:DS.ratio,
   km:Math.round(odo.total*10)/10, paidKm:Math.round(odo.paid*10)/10,
-  hours:Math.round(((en-st)/3600000-restTotal()/60)*100)/100,
-  gross:Math.round((en-st)/36000)/100,
+  hours:Math.round(workInfo().hours*100)/100,
+  gross:Math.round(workInfo().gross/60*100)/100,
   rest:Math.round(restTotal()),
   fuelCost:Math.round(fuelTotal()), fuelAmt:Math.round(fuelAmt()*100)/100,
   paidSec:done.reduce((a,t)=>a+(t.end-t.start),0)/1000,
-  gaps:(()=>{let g=[];for(let i=1;i<trips.length;i++)if(trips[i-1].end)g.push((trips[i].start-trips[i-1].end)/60000);return g;})(),
-  gap:(()=>{let g=[];for(let i=1;i<trips.length;i++)if(trips[i-1].end)g.push((trips[i].start-trips[i-1].end)/60000);
+  gaps:(()=>{let g=[];for(let i=1;i<trips.length;i++)if(trips[i-1].end){const v=(trips[i].start-trips[i-1].end)/60000; if(v<=BREAK_MIN) g.push(v);}return g;})(),
+  gap:(()=>{let g=[];for(let i=1;i<trips.length;i++)if(trips[i-1].end){const v=(trips[i].start-trips[i-1].end)/60000; if(v<=BREAK_MIN) g.push(v);}
     return g.length?Math.round(g.reduce((a,b)=>a+b,0)/g.length*10)/10:null;})(),
+  breakMin:DS.brk, breakN:DS.brkN, fareMissing:done.filter(t=>!t.fare).length,
   deadKm: odo.total>0?Math.round((1-odo.paid/odo.total)*1000)/10:null,
-  deadT: (en-st)>0?Math.round((1-paidMs/(en-st))*1000)/10:null,
+  deadT: DS.ratio!=null?DS.ratio:((en-st)>0?Math.round((1-paidMs/(en-st))*1000)/10:null),
   peak: (()=>{const p=done.map(peakOf).filter(x=>x); return p.length?Math.round(p.reduce((a,b)=>a+b,0)/p.length*100)/100:null;})()};
 }
 async function commitDay(){
@@ -2920,11 +3742,16 @@ async function commitDay(){
  // 분석용 운행 원본 보관 (최근 60일)
  const done=trips.filter(x=>x.end);
  if(done.length){
-  tripArchive=tripArchive.filter(a=>!(a[0]&&new Date(a[0].start).toISOString().slice(0,10)===t.date));
+  tripArchive=tripArchive.filter(a=>!(a[0]&&tripYMD(a[0])===t.date));
   tripArchive.unshift(done.map(x=>({start:x.start,end:x.end,fare:x.fare,from:x.from,to:x.to,
     peak:x.peak,autoPeak:x.autoPeak,wait:x.wait,
     fla:x.fla,flo:x.flo,tla:x.tla,tlo:x.tlo,pathKm:x.pathKm,
-    fromAddr:x.fromAddr,toAddr:x.toAddr,tag:x.tag})));
+    fromAddr:x.fromAddr,toAddr:x.toAddr,fromGu:x.fromGu,toGu:x.toGu,
+    dead:x.dead,call:x.call,weather:x.weather,daycontext:x.daycontext,events:x.events,
+    km:x.km,kmSrc:x.kmSrc,gpsKm:x.gpsKm,flagShort:x.flagShort,tmapFare:x.tmapFare,
+    fromBldg:x.fromBldg,fromRoad:x.fromRoad,fromJibun:x.fromJibun,fromFull:x.fromFull,
+    toBldg:x.toBldg,toRoad:x.toRoad,toJibun:x.toJibun,toFull:x.toFull,
+    tag:x.tag})));
   if(tripArchive.length>60) tripArchive=tripArchive.slice(0,60);
   await Store.set(KEY_ARCH,tripArchive);}
  history=history.filter(h=>h.date!==t.date); history.push(t);
@@ -2987,6 +3814,43 @@ function renderHist(){
 
 /* ─── 기록 수정 ─── */
 let edId=null;
+
+/* ── 확인 필요한 운행 — 요금 미입력·짧은 탑승 ── */
+const isShort=t=>!!(t.flagShort||(t.end&&t.start&&t.end-t.start<60000));   // 예전 기록도 잡는다
+function needFix(){
+ return trips.filter(t=>t.end&&(!t.fare||isShort(t)));
+}
+function drawFixbar(){
+ const bar=document.getElementById('fixbar'); if(!bar) return;
+ const L=needFix();
+ if(!L.length){ bar.hidden=true; return; }
+ const nf=L.filter(t=>!t.fare).length, ns=L.filter(isShort).length;
+ bar.innerHTML=`<span>확인 필요 <b>${L.length}건</b> — ${[nf?'요금 미입력 '+nf:'',ns?'승차 시각 확인 '+ns:''].filter(Boolean).join(' · ')}</span><span class="go">입력 ›</span>`;
+ bar.hidden=false;
+ bar.onclick=()=>editTrip(L[0].start);
+}
+/* 수정한 시각으로 공차·배회·픽업을 다시 계산한다 — 늦게 누른 버튼을 고치면 공차도 따라 고쳐져야 한다 */
+function recalcDead(){
+ const T=trips.filter(t=>t.start).sort((a,b)=>a.start-b.start);
+ for(let i=0;i<T.length;i++){
+  const t=T[i], pv=i>0?T[i-1]:null;
+  let from=null;
+  if(pv&&pv.end) from=pv.end;
+  else if(i===0){ const sh=shifts.find(x=>x.s<=t.start&&(!x.e||x.e>=t.start)); if(sh) from=sh.s; }
+  if(from==null||!t.dead) continue;
+  const tot=Math.round((t.start-from)/60000*10)/10;
+  if(tot<0) continue;
+  t.dead.min=tot;
+  if(t.dead.km!=null&&tot>0) t.dead.kmh=Math.round(t.dead.km/(tot/60)*10)/10;
+  if(t.dead.split&&t.dead.callAt){
+   const ca=Math.min(Math.max(t.dead.callAt,from),t.start);
+   t.dead.roamMin=Math.round((ca-from)/60000*10)/10;
+   t.dead.pickMin=Math.round((t.start-ca)/60000*10)/10;
+   if(t.call){ t.call.roamMin=t.dead.roamMin; t.call.pickMin=t.dead.pickMin; }
+  }
+ }
+}
+let edOrig={from:'',to:'',fp:'',tp:''};
 function editTrip(id){
  const t=trips.find(x=>x.start===id); if(!t)return;
  edId=id;
@@ -2995,8 +3859,14 @@ function editTrip(id){
  document.getElementById('ed_s').value=hm(t.start);
  document.getElementById('ed_e').value=t.end?hm(t.end):'';
  document.getElementById('ed_f').value=t.fare||'';
- document.getElementById('ed_from').value=t.fromAddr||t.from||'';
- document.getElementById('ed_to').value=t.toAddr||t.to||'';
+ document.getElementById('ed_from').value=t.from||'';
+ document.getElementById('ed_to').value=t.to||'';
+ document.getElementById('ed_fp').value=t.fromAddr||'';
+ document.getElementById('ed_tp').value=t.toAddr||'';
+ const ad=[t.fromRoad||t.fromFull?'승차 주소: '+(t.fromRoad||t.fromFull)+(t.fromJibun?' ('+t.fromJibun+')':''):'',
+           t.toRoad||t.toFull?'하차 주소: '+(t.toRoad||t.toFull)+(t.toJibun?' ('+t.toJibun+')':''):''].filter(Boolean);
+ document.getElementById('ed_addr').innerHTML=ad.join('<br>');
+ edOrig={from:t.from||'',to:t.to||'',fp:t.fromAddr||'',tp:t.toAddr||''};
  tagPick={...(t.tag||{call:null,pax:null,pay:null,mood:null})};
  drawTagsIn('#ed_tags');
  document.getElementById('edit').classList.add('on');
@@ -3015,12 +3885,20 @@ function initEdit(){
   if(ne) t.end=ne<t.start?ne+86400000:ne;
   const f=parseInt(document.getElementById('ed_f').value,10);
   if(!isNaN(f)) t.fare=f;
-  t.from=document.getElementById('ed_from').value.trim()||t.from;
-  t.to=document.getElementById('ed_to').value.trim()||t.to;
-  t.fromAddr=null; t.toAddr=null;
+  // 칸에는 건물명이 채워져 보인다. 기사가 실제로 고친 경우에만 바꾼다
+  // (예전엔 저장만 해도 동 이름이 건물명으로 덮여 지역 판정이 깨졌다)
+  const vf=document.getElementById('ed_from').value.trim(), vt=document.getElementById('ed_to').value.trim();
+  const vfp=document.getElementById('ed_fp').value.trim(), vtp=document.getElementById('ed_tp').value.trim();
+  // 동을 고치면 구 판정은 동 이름으로 다시 하게 비운다. 지점명은 따로 고친다.
+  if(vf&&vf!==edOrig.from){ t.from=vf; t.fromGu=null; t.fromEdited=true; }
+  if(vt&&vt!==edOrig.to){ t.to=vt; t.toGu=null; t.toEdited=true; }
+  if(vfp!==edOrig.fp){ t.fromAddr=vfp||null; t.fromPlaceEdited=true; }
+  if(vtp!==edOrig.tp){ t.toAddr=vtp||null; t.toPlaceEdited=true; }
+  if(ns||ne) t.flagShort = !!(t.end&&t.end-t.start<60000);
   t.tag={...tagPick};
   const a=calcPeak(t); if(a!=null) t.autoPeak=a;
   trips.sort((x,y)=>x.start-y.start);
+  if(ns||ne){ try{ recalcDead(); }catch(e){} }
   await Store.set(KEY,trips); await commitDay();
   sh.classList.remove('on'); render();};
 }
@@ -3112,13 +3990,12 @@ document.getElementById('pkbtn').onclick=e=>{
 const expSheet=document.getElementById('expd');
 document.getElementById('editexp').onclick=()=>{
  e_gas.value=expense.gas||''; e_toll.value=expense.toll||'';
- e_etc.value=expense.etc||''; e_fee.value=expense.fee??10;
+ e_etc.value=expense.etc||'';
  expSheet.classList.add('on');};
 document.getElementById('expclose').onclick=()=>expSheet.classList.remove('on');
 expSheet.onclick=ev=>{if(ev.target===expSheet)expSheet.classList.remove('on');};
 document.getElementById('expsave').onclick=async()=>{
- expense={gas:+e_gas.value||0,toll:+e_toll.value||0,etc:+e_etc.value||0,
-          fee:e_fee.value===''?10:+e_fee.value};
+ expense={gas:+e_gas.value||0,toll:+e_toll.value||0,etc:+e_etc.value||0};
  await Store.set(KEY_EXP,expense); await commitDay();
  expSheet.classList.remove('on'); render();};
 
@@ -3172,11 +4049,11 @@ function fillCfg(){
  g_h0.value=CFG.s[0].h; g_g0.value=CFG.s[0].g;
  g_h1.value=CFG.s[1].h; g_g1.value=CFG.s[1].g;
  g_h2.value=CFG.s[2].h; g_g2.value=CFG.s[2].g;
- g_st.value=CFG.st; g_bd.value=CFG.bd??6; g_fuel.value=CFG.fuel||'lpg'; g_qt.value=CFG.quota||'';}
+ g_st.value=CFG.st; g_bd.value=CFG.bd??0; g_fuel.value=CFG.fuel||'lpg'; g_qt.value=CFG.quota||'';}
 document.getElementById('pre_v').onclick=()=>{
- CFG.st=4; CFG.bd=6; CFG.s=[{h:7,g:150000},{h:12,g:300000},{h:14,g:400000}]; fillCfg();};
+ CFG.st=4; CFG.bd=0; CFG.s=[{h:7,g:150000},{h:12,g:300000},{h:14,g:400000}]; fillCfg();};
 document.getElementById('pre_m').onclick=()=>{
- CFG.st=6; CFG.bd=6; CFG.s=[{h:10,g:100000},{h:14,g:200000},{h:18,g:280000}]; fillCfg();};
+ CFG.st=6; CFG.bd=0; CFG.s=[{h:10,g:100000},{h:14,g:200000},{h:18,g:280000}]; fillCfg();};
 document.getElementById('opset').onclick=()=>{
  document.getElementById('key').value=apiKey; fillCfg(); drawMy(); setSheet.classList.add('on');};
 document.getElementById('setclose').onclick=async()=>{
@@ -3191,7 +4068,7 @@ document.getElementById('setclose').onclick=async()=>{
         {h:num(g_h1,12),g:num(g_g1,300000)},
         {h:num(g_h2,14),g:num(g_g2,400000)}];
  CFG.s.sort((a,b)=>a.h-b.h);
- CFG.quota=num(g_qt,0); CFG.bd=Math.max(0,Math.min(12,num(g_bd,6))); CFG.fuel=g_fuel.value;
+ CFG.quota=num(g_qt,0); CFG.bd=Math.max(0,Math.min(12,num(g_bd,0))); CFG.fuel=g_fuel.value;
  try{
   await Store.set(KEY_CFG,CFG);
   await Store.set(KEY_API,apiKey);
@@ -3936,16 +4813,14 @@ function renderExp(rev){
  if(!done.length)return;
  // 하차→다음 탑승 실측 공차 (서울 평균 19.3분)
  let gp=[];
- for(let i=1;i<trips.length;i++) if(trips[i-1].end) gp.push((trips[i].start-trips[i-1].end)/60000);
+ for(let i=1;i<trips.length;i++) if(trips[i-1].end){ const v=(trips[i].start-trips[i-1].end)/60000; if(v<=BREAK_MIN) gp.push(v); }
  const avgGap=gp.length?gp.reduce((a,b)=>a+b,0)/gp.length:null;
- const fee=Math.round(rev*(expense.fee||0)/100);
  const fu=fuelTotal();
- const cost=fee+(+expense.gas||0)+fu+(+expense.toll||0)+(+expense.etc||0);
+ const cost=(+expense.gas||0)+fu+(+expense.toll||0)+(+expense.etc||0);
  const net=rev-cost;
- const span=(Date.now()-trips[0].start)/3600000;
+ const span=workInfo().hours;
  document.getElementById('expbox').innerHTML=`
-  <div class="e"><span>매출</span><b class="mono">${fmt(rev)}</b></div>
-  <div class="e"><span>수수료 ${expense.fee||0}%</span><b class="mono">−${fmt(fee)}</b></div>
+  <div class="e"><span>매출 <span style="color:var(--faint)">(카카오 수수료 공제 후)</span></span><b class="mono">${fmt(rev)}</b></div>
   <div class="e"><span>${FU().lab} <span style="color:var(--faint)">기록 ${fuels.length}건</span></span><b class="mono">−${fmt(Math.round(fu))}</b></div>
   <div class="e"><span>기타 연료비(수기)</span><b class="mono">−${fmt(+expense.gas||0)}</b></div>
   <div class="e"><span>통행료</span><b class="mono">−${fmt(+expense.toll||0)}</b></div>
@@ -3953,6 +4828,7 @@ function renderExp(rev){
   <div class="e tot"><span>총 비용</span><b class="mono">${fmt(cost)}</b></div>
   <div class="e"><span>주행 ${odo.total.toFixed(1)}km · 영업 ${odo.paid.toFixed(1)}km</span><b class="mono" style="color:var(--dim)">${odo.total>0?'공차 '+((1-odo.paid/odo.total)*100).toFixed(0)+'%':'-'}</b></div>
   <div class="e"><span>평균 공차시간 <span style="color:var(--faint)">(서울 평균 19.3분)</span></span><b class="mono" style="color:${avgGap==null?'var(--dim)':avgGap<=19.3?'var(--occ)':avgGap<=26?'var(--amber)':'var(--vac)'}">${avgGap==null?'-':avgGap.toFixed(0)+'분'}</b></div>
+  <div class="e"><span>순근무 ${span.toFixed(1)}시간 · 시간당 매출</span><b class="mono">${span>0.1?fmt(Math.round(rev/span)):'-'}</b></div>
   <div class="e net"><span>순수익 · 시간당 ${span>0.1?fmt(Math.round(net/span)):'-'}원${odo.paid>0.5?' · km당 '+fmt(Math.round(rev/odo.paid))+'원':''}</span><b class="mono">${fmt(net)}</b></div>`;
 }
 
@@ -3960,26 +4836,30 @@ function renderExp(rev){
 function stats(){
  document.getElementById('logsec').hidden=trips.length===0;
  if(!trips.length)return;
- const done=trips.filter(t=>t.end),span=(Date.now()-trips[0].start)/3600000;
+ const done=trips.filter(t=>t.end); const WI=workInfo(); const span=WI.hours;
  const paid=done.reduce((s,t)=>s+(t.end-t.start),0)/3600000;
  const fare=done.reduce((s,t)=>s+(t.fare||0),0);
- let gaps=[];for(let i=1;i<trips.length;i++)if(trips[i-1].end)gaps.push((trips[i].start-trips[i-1].end)/60000);
+ let gaps=[];for(let i=1;i<trips.length;i++)if(trips[i-1].end){const v=(trips[i].start-trips[i-1].end)/60000; if(v<=BREAK_MIN) gaps.push(v);}
  document.getElementById('s1').textContent=span.toFixed(1)+'h';
- try{ document.getElementById('s1').title=`총 ${span.toFixed(1)}h − 휴게 ${(typeof restTotal==='function'?restTotal():0).toFixed(0)}분`; }catch(e){}
- document.getElementById('s2').textContent=span>0?Math.round((1-paid/span)*100)+'%':'-';
+ try{ document.getElementById('s1').title=`순근무 ${span.toFixed(1)}h = ${WI.src==='근무'?'운행 시작~종료':'첫 승차~'} ${(WI.gross/60).toFixed(1)}h − 휴게·휴식 ${WI.off.toFixed(0)}분`; }catch(e){}
+ { const DS2=deadStats(done);
+   document.getElementById('s2').textContent = DS2.ratio!=null ? Math.round(DS2.ratio)+'%'
+     : (span>0?Math.round((1-paid/span)*100)+'%':'-');
+   document.getElementById('s2').title='공차분 ÷ (공차분 + 탑승분) · 2시간 넘는 공백은 휴식으로 제외'; }
  document.getElementById('s3').textContent=done.length;
  const dead=odo.total>0?(1-odo.paid/odo.total)*100:null;
  const s5=document.getElementById('s5');
  s5.textContent=odo.total>0.5?dead.toFixed(0)+'%':'-';
  s5.style.color=dead==null?'':(dead<=37?'var(--occ)':dead<=45?'var(--amber)':'var(--vac)');
  s5.title='서울 평균 37.4%';
- document.getElementById('s4').textContent=span>0.05?fmt(Math.round(fare/span))+'원':'-';
+ document.getElementById('s4').textContent=WI.perHour!=null?fmt(Math.round(WI.perHour))+'원':'-';
+ document.getElementById('s4').title='시간당 = 오늘 입력한 요금 합계 ÷ 순근무시간 (카카오 수수료 공제 후 금액 기준)';
  const hm=x=>String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0');
  document.getElementById('log').innerHTML=done.slice().reverse().map((t,n)=>{
   const k=done.length-1-n,gap=k>0&&done[k-1].end?Math.round((t.start-done[k-1].end)/60000):null;
   return `<div class="r"><div class="t mono">${hm(new Date(t.start))}–${hm(new Date(t.end))}</div>
-   <div class="p">${t.fromAddr||t.from||'?'} → ${t.toAddr||t.to||'?'}${t.tag&&t.tag.pax==='외국인'?' <span style="color:#6FA8DC;font-size:10px">외국인</span>':''}${t.tag&&t.tag.call?' <span style="color:var(--faint);font-size:10px">'+t.tag.call+'</span>':''}${peakOf(t)?' <span style="color:var(--amber)">×'+peakOf(t).toFixed(2)+(t.peak?'':(t.peakSrc==='TMAP'?'':'<sup style="font-size:8px">추정</sup>'))+'</span>':''}</div><div class="g mono">${gap!=null?gap+'분':''}</div>
-   <div class="f mono">${t.fare?fmt(t.fare):'—'}</div>
+   <div class="p">${placeLine(t.from,t.fromAddr)} → ${placeLine(t.to,t.toAddr)}${t.tag&&t.tag.pax==='외국인'?' <span style="color:#6FA8DC;font-size:10px">외국인</span>':''}${t.tag&&t.tag.call?' <span style="color:var(--faint);font-size:10px">'+t.tag.call+'</span>':''}${peakOf(t)?' <span style="color:var(--amber)">×'+peakOf(t).toFixed(2)+(t.peak?'':(t.peakSrc==='TMAP'?'':'<sup style="font-size:8px">추정</sup>'))+'</span>':''}</div><div class="g mono">${gap!=null?gap+'분':''}</div>
+   <div class="f mono">${t.fare?fmt(t.fare):'<b style="color:var(--vac)">요금?</b>'}${isShort(t)?'<div style="color:var(--amber);font-size:9px">승차시각?</div>':''}</div>
    <button class="ed" data-te="${t.start}">✏</button>
    <button class="ed dl" data-td="${t.start}">×</button></div>`;}).join('');
  document.querySelectorAll('[data-te]').forEach(b=>b.onclick=()=>editTrip(+b.dataset.te));
@@ -3991,7 +4871,14 @@ function stats(){
 
 const tog=document.getElementById('tog'),hint=document.getElementById('hint');
 tog.onclick=async()=>{
- if(!occupied){occupied=true;dest=null;
+ if(!occupied){
+  // 오조작 방지: 방금 하차한 자리에서 30초 안에 다시 탑승이 눌리면 확인한다 (9/17 #10)
+  { const pv0=trips.filter(x=>x.end).pop();
+    if(pv0&&pv0.end&&Date.now()-pv0.end<30000){
+     const same = !pos||pv0.tla==null ? true : dist(pv0.tla,pv0.tlo,pos.la,pos.lo)<0.05;
+     if(same&&!confirm(`방금 ${Math.round((Date.now()-pv0.end)/1000)}초 전에 하차했습니다.\n\n새 손님이 탑승한 게 맞습니까?\n(취소를 누르면 아무것도 기록하지 않습니다)`)) return;
+    } }
+  occupied=true;dest=null;
   const h=new Date().getHours();
   lastDrop=null;
   // 직전 하차 지점의 실측 대기시간 기록
@@ -4002,44 +4889,54 @@ tog.onclick=async()=>{
    const near=nearest(pv.tla,pv.tlo);
    const ng = near.km>50 ? offGrid(pv.tla,pv.tlo) : nearGrid(pv.tla,pv.tlo);
    const hh=new Date(pv.end).getHours();
-   if(ng&&valid(hh)) obsAdd(ng.g,ng.n,hh,gap);
+   if(ng&&valid(hh)&&gap<=BREAK_MIN) obsAdd(ng.g,ng.n,hh,gap);
   }
   if(wakeSupported()&&!wakeLock){wantWake=true;wakeOn().then(drawWake);Store.set(KEY_WAKE,1);}
-  const nt={start:Date.now(),from:cur?cur.n:null,fla:pos?.la,flo:pos?.lo,
+  const nt={start:Date.now(),odoPaid0:odo.paid,from:cur?cur.n:null,fla:pos?.la,flo:pos?.lo,
    wait:cur&&valid(h)?cur.w[idx(h)]:null,
    daycontext:dayContext(), events:todayEvents.slice()};
   // ── 직전 하차 → 이번 승차까지의 공차 구간을 자동 기록 ──
   // 카카오 흐름: 하차 → 배회 → 자동배차 → 승차지 이동 → 승차.
   // 버튼 없이 잴 수 있는 것: 걸린 시간, 실제 주행거리, 하차지↔승차지 직선거리.
-  if(pv&&pv.end){
-   nt.dead={min:Math.round((Date.now()-pv.end)/60000*10)/10,
+  const sh=openShift();
+  // 그날 첫 운행이면 '운행 시작'부터가 공차다
+  const deadFromTs = (pv&&pv.end) ? pv.end : (sh&&!trips.some(x=>x.end) ? sh.s : null);
+  if(deadFromTs){
+   const pvOK=!!(pv&&pv.end);
+   nt.dead={min:Math.round((Date.now()-deadFromTs)/60000*10)/10,
             km:Math.round(deadOdo*100)/100,
-            fromName:pv.to||null};
-   if(pv.tla!=null&&pos) nt.dead.straightKm=Math.round(dist(pv.tla,pv.tlo,pos.la,pos.lo)*100)/100;
+            fromName:pvOK?(pv.to||null):'운행시작'};
+   if(pvOK&&pv.tla!=null&&pos) nt.dead.straightKm=Math.round(dist(pv.tla,pv.tlo,pos.la,pos.lo)*100)/100;
+   nt.dead.gpsKm=nt.dead.km; nt.dead.kmSrc='GPS';
+   if(nt.dead.straightKm!=null){ const ref=nt.dead.straightKm*DETOUR;
+    if(nt.dead.km<ref*0.5){ const add=ref-nt.dead.km; odo.total+=add;
+     nt.dead.km=Math.round(ref*100)/100; nt.dead.kmSrc='직선보정'; } }
    if(nt.dead.min>0) nt.dead.kmh=Math.round(nt.dead.km/(nt.dead.min/60)*10)/10;
    // 하차지 → 승차지 방향
-   if(pv.tla!=null&&pos){
+   if(pvOK&&pv.tla!=null&&pos){
     const b2=bearing(pv.tla,pv.tlo,pos.la,pos.lo);
     nt.dead.bear=Math.round(b2); nt.dead.dir=dir8(b2);
    }
-   // 콜 수락을 눌렀다면 배회 구간과 픽업 구간을 나눈다
+   // 콜 수락을 눌렀다면 배회 구간(하차→콜)과 픽업 구간(콜→승차)을 나눈다
    if(callPt){
-    nt.call={
-     at:callPt.t,
-     roamMin:callPt.roamMin??null,             // 하차 → 콜 수신
-     roamKm:callPt.roamKm??null,
-     roamDir:callPt.dir||null,                 // 배회 방향(하차지 기준)
-     roamBear:callPt.bear??null,
-     pickMin:Math.round((Date.now()-callPt.t)/60000*10)/10,   // 콜 → 승차
-     pickKm:Math.round((deadOdo-(callPt.pickStartOdo||0))*100)/100
-    };
+    const roamMin = callPt.roamMin!=null ? callPt.roamMin
+                  : Math.round((callPt.t-deadFromTs)/60000*10)/10;
+    const roamKm  = callPt.roamKm!=null ? callPt.roamKm : 0;
+    const pickMin = Math.round((Date.now()-callPt.t)/60000*10)/10;
+    const pickKm  = Math.round((deadOdo-(callPt.pickStartOdo||0))*100)/100;
+    nt.call={at:callPt.t,roamMin,roamKm,roamDir:callPt.dir||null,roamBear:callPt.bear??null,
+             pickMin,pickKm};
+    Object.assign(nt.dead,{split:true,callAt:callPt.t,
+     roamMin,roamKm,roamDir:callPt.dir||null,pickMin,pickKm});
     if(callPt.la!=null&&pos){
      const b3=bearing(callPt.la,callPt.lo,pos.la,pos.lo);
-     nt.call.pickDir=dir8(b3);
+     nt.call.pickDir=dir8(b3); nt.dead.pickDir=nt.call.pickDir;
      nt.call.pickStraightKm=Math.round(dist(callPt.la,callPt.lo,pos.la,pos.lo)*100)/100;
+     nt.dead.pickStraightKm=nt.call.pickStraightKm;
     }
-   }
+   } else nt.dead.split=false;
   }
+  lastAct=Date.now();
   callPt=null;
   deadOdo=0;
   try{ drawCall(); }catch(e){}
@@ -4047,14 +4944,19 @@ tog.onclick=async()=>{
   // 날씨는 건별로 기록한다 (비는 오다 그치므로 하루 단위로는 못 잡는다).
   // 부가정보이므로 실패해도 운행 기록은 그대로 저장된다.
   wxForTrip().then(w=>{ if(w){ nt.weather=w; Store.set(KEY,trips);} }).catch(()=>{});
-  if(pos) revGeo(pos.la,pos.lo).then(g=>{if(g){nt.from=g.dong||nt.from;nt.fromAddr=g.bldg||g.road||g.full;
+  if(pos) revGeo(pos.la,pos.lo).then(g=>{if(g){ if(!nt.fromEdited) setPlace(nt,'from',g);
    Store.set(KEY,trips);render();}});
   tog.textContent='승객 하차';tog.classList.add('occ');
   hint.textContent='실차 · 목적지를 설정하면 미리 계산합니다';
- }else{occupied=false; try{ drawCall(); }catch(e){}const t=trips[trips.length-1];
-  t.end=Date.now();lastDrop=t.end;t.to=cur?cur.n:null;t.tla=pos?.la;t.tlo=pos?.lo;
+ }else{
+  { const t0=trips[trips.length-1];
+    const sec=t0&&t0.start?(Date.now()-t0.start)/1000:999;
+    if(sec<60&&!confirm(`탑승한 지 ${Math.round(sec)}초밖에 안 됐습니다.\n\n승차 때 누르지 못하고 지금 연달아 누르신 건가요?\n\n[확인] 하차로 기록 — 나중에 ✏에서 승차 시각을 고치세요\n[취소] 아직 운행 중`)) return; }
+  occupied=false; try{ drawCall(); }catch(e){}const t=trips[trips.length-1];
+  t.end=Date.now();lastDrop=t.end;lastAct=t.end;
+  if((t.end-t.start)<60000) t.flagShort=true;t.to=cur?cur.n:null;t.tla=pos?.la;t.tlo=pos?.lo;
   if(pos){const g=await revGeo(pos.la,pos.lo);
-    if(g){t.to=g.dong||t.to; t.toAddr=g.bldg||g.road||g.full;}}
+    if(g) setPlace(t,'to',g);}
   if(apiKey&&t.fla&&t.tla){
    try{ delete etaCache[ckey({la:t.fla,lo:t.flo},{la:t.tla,lo:t.tlo})];   // 실경로 새로 조회
         await fetchEta({la:t.fla,lo:t.flo},{la:t.tla,lo:t.tlo});
@@ -4062,6 +4964,13 @@ tog.onclick=async()=>{
         if(c){ if(c.km) t.pathKm=Math.round(c.km*10)/10;
                if(c.fare) t.tmapFare=c.fare; } }catch(e){}
   }
+  // 실차 거리: GPS가 경로의 절반도 못 잡았으면 TMAP 경로(없으면 직선×1.35)로 채운다
+  { const gpsKm=Math.max(0,odo.paid-(t.odoPaid0??odo.paid));
+    const ref = t.pathKm || (t.tla!=null&&t.fla!=null ? dist(t.fla,t.flo,t.tla,t.tlo)*DETOUR : null);
+    t.gpsKm=Math.round(gpsKm*100)/100;
+    if(ref && gpsKm<ref*0.5){ const add=ref-gpsKm; odo.paid+=add; odo.total+=add;
+      t.km=Math.round(ref*100)/100; t.kmSrc=t.pathKm?'TMAP보정':'직선보정'; }
+    else { t.km=t.gpsKm; t.kmSrc='GPS'; } }
   dest=null;tog.textContent='승객 탑승';tog.classList.remove('occ');
   hint.textContent='빈차 · 손님을 태우면 누르세요';
   pending=t;document.getElementById('fare').value='';
@@ -4091,7 +5000,7 @@ document.getElementById('ok').onclick=async()=>{
  document.getElementById('dlg').close();await Store.set(KEY,trips);await Store.set(KEY_ODO,odo);await commitDay();render();};
 document.getElementById('skip').onclick=()=>{document.getElementById('dlg').close();render();};
 document.getElementById('exp').onclick=()=>{
- const b=new Blob([JSON.stringify({date:BIZ,trips,expense,odo,history,tripArchive,expList,cfg:CFG,books,custs,obs,rests,tagLast},null,1)],{type:'application/json'}),a=document.createElement('a');
+ const b=new Blob([JSON.stringify({date:BIZ,trips,expense,odo,history,tripArchive,expList,cfg:CFG,books,custs,obs,rests,shifts,tagLast},null,1)],{type:'application/json'}),a=document.createElement('a');
  a.href=URL.createObjectURL(b);a.download='gongcha_'+BIZ+'.json';a.click();};
 document.getElementById('imp').onclick=()=>{
  const i=document.createElement('input');i.type='file';i.accept='.json';
@@ -4106,38 +5015,41 @@ document.getElementById('imp').onclick=()=>{
          if(j.books){books=j.books;await Store.set(KEY_BOOK,books);}
          if(j.custs){custs=j.custs;await Store.set(KEY_CUST,custs);}
          if(j.obs){obs=j.obs;await Store.set(KEY_OBS,obs);}
-         if(j.rests){rests=j.rests;await Store.set(KEY_REST,{r:rests,on:null});}}
+         if(j.rests){rests=j.rests;await Store.set(KEY_REST,{r:rests,on:null});}
+         if(j.shifts){shifts=j.shifts;await Store.set(KEY_SHIFT,shifts);}}
     await Store.set(KEY,trips);await Store.set(KEY_ODO,odo);await Store.set(KEY_HIST,history);
     render();}catch(x){alert('읽지 못했습니다');}};
   r.readAsText(e.target.files[0]);};i.click();};
 document.getElementById('clr').onclick=async()=>{
  if(occupied){alert('운행 중입니다. 승객 하차 후 마감해주세요.');return;}
+ await shiftEnd();
  const done=trips.filter(t=>t.end);
  if(!done.length&&odo.total<0.5){alert('오늘 기록이 없습니다.');return;}
  const r=done.reduce((a,t)=>a+(t.fare||0),0);
- const fee=Math.round(r*(expense.fee||0)/100);
- const cost=fee+(+expense.gas||0)+(+expense.toll||0)+(+expense.etc||0);
+ const cost=(+expense.gas||0)+(+expense.toll||0)+(+expense.etc||0);
  const msg=`오늘 하루를 마감합니다.\n\n`+
   `매출  ${fmt(r)}원 (${done.length}건)\n`+
   `비용  ${fmt(cost)}원\n`+
   `순수익 ${fmt(r-cost)}원\n`+
   `주행  ${odo.total.toFixed(1)}km · 공차 ${odo.total>0?((1-odo.paid/odo.total)*100).toFixed(0)+'%':'-'}\n\n`+
-  `기간 집계에 저장되고 새 하루가 시작됩니다.`;
+  `기간 집계에 저장됩니다. 오늘 기록은 자정(00:00)에 자동으로 넘어갑니다 —\n`+
+  `자정 전에 다시 운행하시면 오늘 몫으로 계속 쌓입니다.`;
  if(confirm(msg)){
-  monthRev+=r; await Store.set(KEY_MREV,monthRev);
-  await commitDay(); buildZoneRate(); trips=[];occupied=false;dest=null;odo={total:0,paid:0};lastFix=null;
-  rests=[];restOn=null;fuels=[];await Store.set(KEY_REST,{r:[],on:null});await Store.set(KEY_FUEL,[]);await Store.set(KEY_ODO,odo);
-  tog.textContent='승객 탑승';tog.classList.remove('occ');await Store.set(KEY,trips);render();}};
+  await commitDay(); buildZoneRate();
+  dest=null; await Store.set(KEY,trips); render();}};
 
 (async()=>{
  const c0=await Store.get(KEY_CFG); if(c0&&c0.s&&c0.s.length===3) CFG=c0;
- if(CFG.bd==null) CFG.bd=6;
+ if(CFG.bd==null) CFG.bd=0;
+ // v25 이관: 하루 결산을 00:00~23:59 로 통일한다 (한 번만 수행)
+ if(!CFG.v25){ CFG.bd=0; CFG.basis=CFG.basis||'end'; CFG.v25=1; await Store.set(KEY_CFG,CFG); }
  BIZ=bizDate();
  KEY='gongcha:'+BIZ; KEY_ODO='gongcha:odo:'+BIZ; KEY_EXP='gongcha:exp:'+BIZ;
  KEY_MREV='gongcha:mrev:'+BIZ.slice(0,7); KEY_REST='gongcha:rest:'+BIZ; KEY_FUEL='gongcha:fuel:'+BIZ;
  apiKey=(await Store.get(KEY_API))||'';
  mySpots=(await Store.get(KEY_SPOT))||[];
- expense=(await Store.get(KEY_EXP))||{gas:0,toll:0,etc:0,fee:10};
+ expense=(await Store.get(KEY_EXP))||{gas:0,toll:0,etc:0};
+ if(expense&&'fee' in expense){ delete expense.fee; await Store.set(KEY_EXP,expense); }   // v27: 수수료 항목 제거
  obs=(await Store.get(KEY_OBS))||{};
  tagLast=(await Store.get(KEY_TAGL))||{call:null,pax:null,pay:null,mood:null};
  fuels=(await Store.get(KEY_FUEL))||[];
@@ -4154,6 +5066,9 @@ document.getElementById('clr').onclick=async()=>{
  books=(await Store.get(KEY_BOOK))||[];
  custs=(await Store.get(KEY_CUST))||{};
  safe(initBook,'initBook'); safe(initCust,'initCust'); safe(initWake,'initWake');
+ try{ await initZone(); }catch(e){ console.warn('initZone 건너뜀',e.message); }
+ shifts=(await Store.get(KEY_SHIFT))||[];
+ try{ initShift(); }catch(e){ console.warn('initShift 건너뜀',e.message); }
  safe(initRest,'initRest'); safe(initEdit,'initEdit'); safe(initFuel,'initFuel');
  try{ if(await Store.get(KEY_WAKE)){ wantWake=true; await wakeOn(); drawWake(); } }catch(e){}
  const s=await Store.get(KEY);
@@ -4172,6 +5087,7 @@ document.getElementById('clr').onclick=async()=>{
   if(!callPt){                                   // 콜 받음
    const pv=trips.filter(x=>x.end).pop();
    callPt={t:Date.now(), la:pos?.la, lo:pos?.lo, roamKm:Math.round(deadOdo*100)/100};
+   lastAct=Date.now();
    if(pv&&pv.end){
     callPt.roamMin=Math.round((Date.now()-pv.end)/60000*10)/10;
     if(pv.tla!=null&&pos){
