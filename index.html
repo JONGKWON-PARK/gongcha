@@ -965,6 +965,13 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   </section>
 
   <section style="padding-top:0">
+    <div class="eyebrow"><span>공공데이터 인증키</span><span id="air_keyst" class="mono" style="font-size:10px;color:var(--faint)"></span></div>
+    <div class="fr" style="margin-bottom:4px">
+      <input id="air_key_in" placeholder="여기에 인증키를 붙여넣으세요" autocomplete="off" spellcheck="false" style="flex:1">
+      <button id="air_key_save">저장</button></div>
+    <div class="mt" style="color:var(--faint);font-size:10px;margin-bottom:10px">
+      포털의 <b>일반 인증키</b>를 붙여넣으면 됩니다. 요청주소를 통째로 붙여넣어도 키만 골라냅니다.
+      인천·김포·기상청·특일이 모두 이 키 하나를 씁니다.</div>
     <div class="eyebrow"><span>한국공항공사 API</span><span><button id="air_probe">API 진단</button>
       <button id="air_copy" hidden>진단 복사</button></span></div>
     <div class="mt" style="color:var(--dim);font-size:10.5px;margin-bottom:8px">
@@ -4192,7 +4199,7 @@ document.getElementById('setclose').onclick=async()=>{
   await Store.set(KEY_API,apiKey);
   const _ak=document.getElementById('airkey');
   if(_ak){ const before=airKey;
-           airKey=(_ak.value||'').replace(/[\s"'`]/g,''); _ak.value=airKey;
+           airKey=airKeyClean(_ak.value); _ak.value=airKey; airKeyState();
            await Store.set(KEY_AIRK,airKey);
            // 키가 새로 들어오면 공휴일·날씨를 즉시 받아온다
            if(airKey&&airKey!==before){
@@ -4940,6 +4947,22 @@ async function kacProbe(){
  }
  return out;
 }
+/* 주소·따옴표·줄바꿈이 섞여 들어와도 키만 남긴다 */
+function airKeyClean(raw){
+ let v=String(raw||'').trim();
+ if(!v) return '';
+ const m=v.match(/[?&]serviceKey=([^&\s]+)/i);       // 요청주소를 통째로 붙여넣은 경우
+ if(m) v=m[1];
+ v=v.replace(/^serviceKey\s*[=:]\s*/i,'');
+ v=v.replace(/[\s"'`<>]/g,'');
+ return v;
+}
+function airKeyState(){
+ const el=document.getElementById('air_keyst'); if(!el) return;
+ el.textContent=airKey ? ('저장됨 '+airKey.slice(0,4)+'●●●'+airKey.slice(-4)+' ('+airKey.length+'자)')
+                       : '아직 없음';
+ el.style.color=airKey?'var(--occ)':'var(--vac)';
+}
 function kacDiagDraw(list){
  const box=document.getElementById('air_diag'); if(!box) return;
  if(!list){ box.innerHTML='<div class="mt" style="color:var(--faint);font-size:11px">「API 진단」을 누르면 8종이 실제로 열리는지 확인합니다.</div>'; return; }
@@ -5242,6 +5265,21 @@ function airUrlDraw(){
 function initAirAp(){
  document.querySelectorAll('#air_ap button').forEach(b=>b.onclick=()=>{
   airAp=b.dataset.ap; airTermButtons(); renderAir(); });
+ /* 붙여넣은 글에서 인증키만 골라낸다 — 주소째 붙여넣어도 되게 */
+ const ki=document.getElementById('air_key_in'), ks=document.getElementById('air_key_save');
+ if(ks) ks.onclick=async()=>{
+  const v=airKeyClean(ki.value);
+  if(!v){ alert('인증키를 찾지 못했습니다. 포털의 일반 인증키를 붙여넣어 주세요.'); return; }
+  airKey=v; await Store.set(KEY_AIRK,airKey);
+  const _ak=document.getElementById('airkey'); if(_ak) _ak.value=airKey;
+  ki.value=''; airKeyState();
+  airCache={}; kacDiag={};
+  ks.textContent='확인 중…'; ks.disabled=true;
+  try{ kacDiagDraw(await kacProbe()); renderAir(); }
+  finally{ ks.textContent='저장'; ks.disabled=false; }
+  holLoadYears().then(ctxDraw).catch(()=>{});
+ };
+ airKeyState();
  const p=document.getElementById('air_probe');
  if(p) p.onclick=async()=>{ p.textContent='확인 중…'; p.disabled=true;
   try{ kacDiagDraw(await kacProbe());
