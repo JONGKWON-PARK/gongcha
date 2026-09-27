@@ -1253,7 +1253,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   <label>TMAP appKey (실시간 소요시간)</label>
   <input id="key" placeholder="openapi.sk.com에서 무료 발급" autocomplete="off">
   <div id="holstat" class="note2" style="margin-bottom:8px"></div>
-  <label>공공데이터 인증키 (인천공항 · 기상청 · 특일)</label>
+  <label>공공데이터 인증키 (인천·김포공항 · 기상청 · 특일)</label>
   <input id="airkey" placeholder="data.go.kr 일반 인증키" autocomplete="off" spellcheck="false">
   <div style="font-size:10.5px;color:var(--faint);margin:-4px 0 12px;line-height:1.5">
     비워두면 거리 기반 추정식을 씁니다. 경로안내 1일 1,000건 무료이며,
@@ -4637,6 +4637,14 @@ function kacParams(kind,o){
    return {pageNo:1,numOfRows:100,type:'json'};
  }
 }
+/* 공공데이터포털은 인증키를 두 가지로 준다.
+   Encoding 키는 이미 %2B 처럼 인코딩되어 있어 다시 인코딩하면 %252B 가 되어 깨진다.
+   Decoding 키는 +, /, = 가 그대로 들어 있어 인코딩하지 않으면 깨진다.
+   그래서 키 안에 % 가 있으면 그대로, 없으면 인코딩해서 붙인다. */
+function keyParam(k){
+ const v=String(k||'').trim(); if(!v) return '';
+ return /%[0-9A-Fa-f]{2}/.test(v) ? v : encodeURIComponent(v);
+}
 function kacBuild(raw,params){
  if(!raw) return null;
  let u=String(raw).trim();
@@ -4644,10 +4652,14 @@ function kacBuild(raw,params){
  u=u.replace(/^http:\/\//i,'https://');            // https 페이지에서는 http 호출이 막힌다
  const [base,qs]=u.split('?');
  const q=new URLSearchParams(qs||'');
- if(!q.get('serviceKey')&&!q.get('ServiceKey')){ if(airKey) q.set('serviceKey',airKey); }
+ // serviceKey 는 URLSearchParams 로 넣으면 이중 인코딩되므로 따로 뺀다
+ let sk=q.get('serviceKey')||q.get('ServiceKey')||'';
+ q.delete('serviceKey'); q.delete('ServiceKey');
+ if(!sk) sk=keyParam(airKey);
  for(const k in (params||{})) if(params[k]!=null&&params[k]!=='') q.set(k,params[k]);
  if(!q.get('type')&&!q.get('_type')) q.set('type','json');   // 기본값이 XML 이라 반드시 지정
- return base+'?'+q.toString();
+ const rest=q.toString();
+ return base+'?serviceKey='+sk+(rest?'&'+rest:'');
 }
 async function kacFetch(kind,opt){
  const raw=kacAddr(kind);
@@ -4659,18 +4671,20 @@ async function kacFetch(kind,opt){
  let r,txt;
  try{ r=await fetch(url); txt=await r.text(); }
  catch(e){ kacDiag[kind]={ok:false,msg:'연결 차단(CORS 또는 네트워크)',ms:Date.now()-t0}; throw new Error('연결 차단'); }
+ const peek=String(txt||'').replace(/\s+/g,' ').slice(0,300);
  let j=null; try{ j=JSON.parse(txt); }catch(e){}
  if(!j){
   const rows=kacParseXml(txt);
-  if(rows.length){ kacDiag[kind]={ok:true,msg:'XML 응답',n:rows.length,ms:Date.now()-t0,sample:rows[0]}; return rows; }
-  kacDiag[kind]={ok:false,msg:'형식 오류: '+txt.slice(0,70),ms:Date.now()-t0};
+  if(rows.length){ kacDiag[kind]={ok:true,msg:'XML 응답',n:rows.length,ms:Date.now()-t0,sample:rows[0],peek}; return rows; }
+  kacDiag[kind]={ok:false,msg:'형식 오류',ms:Date.now()-t0,peek};
   throw new Error('형식 오류');
  }
  const code=airDeep(j,'resultCode'), msg=airDeep(j,'resultMsg')||airDeep(j,'returnAuthMsg');
  if(code!=null&&!(code==='00'||code===0||code==='0')){
-  kacDiag[kind]={ok:false,msg:'거부: '+(msg||code),ms:Date.now()-t0}; throw new Error(msg||'거부'); }
+  kacDiag[kind]={ok:false,msg:'거부: '+(msg||code),ms:Date.now()-t0,peek}; throw new Error(msg||'거부'); }
  const rows=airItems(j);
- kacDiag[kind]={ok:true,msg:'정상',n:rows.length,ms:Date.now()-t0,sample:rows[0]||null};
+ kacDiag[kind]={ok:true,msg:rows.length?'정상':'응답은 왔지만 목록이 비어 있음',
+   n:rows.length,ms:Date.now()-t0,sample:rows[0]||null,peek};
  return rows;
 }
 function kacParseXml(t){
@@ -4843,8 +4857,8 @@ async function kacProbe(){
  for(const K of KAC_KIND){
   if(!kacAddr(K.k)){ out.push({...K,state:'미설정'}); continue; }
   try{ const rows=await kacFetch(K.k,{ymd,from:'0000',to:'2359',intl:false});
-       out.push({...K,state:'정상',cnt:rows.length,sample:rows[0]||null}); }
-  catch(e){ out.push({...K,state:'실패',msg:(kacDiag[K.k]||{}).msg||e.message}); }
+       out.push({...K,state:'정상',cnt:rows.length,sample:rows[0]||null,peek:(kacDiag[K.k]||{}).peek}); }
+  catch(e){ out.push({...K,state:'실패',msg:(kacDiag[K.k]||{}).msg||e.message,peek:(kacDiag[K.k]||{}).peek}); }
  }
  return out;
 }
@@ -4857,7 +4871,8 @@ function kacDiagDraw(list){
   return `<div class="shrow"><span>${x.n} · ${x.hint}</span>
    <b class="mono" style="color:${col}">${x.state}${x.cnt!=null?' '+x.cnt+'건':''}</b></div>`+
    (x.msg?`<div class="mt" style="color:var(--vac);font-size:10px;margin:-2px 0 6px">${x.msg}</div>`:'')+
-   (keys?`<div class="mt" style="color:var(--faint);font-size:10px;margin:-2px 0 6px">항목: ${keys}</div>`:'');
+   (keys?`<div class="mt" style="color:var(--faint);font-size:10px;margin:-2px 0 6px">항목: ${keys}</div>`:'')+
+   (x.peek?`<div class="mt mono" style="color:var(--faint);font-size:9px;margin:-2px 0 8px;word-break:break-all">원문: ${String(x.peek).replace(/</g,'&lt;').slice(0,200)}</div>`:'');
  }).join('');
 }
 
@@ -4865,7 +4880,7 @@ const AIR_BASE='https://apis.data.go.kr/B551177/';
 async function airFetch(path,params){
  if(!airKey) throw new Error('키없음');
  const q=Object.keys(params).map(k=>k+'='+encodeURIComponent(params[k])).join('&');
- const url=AIR_BASE+path+'?'+q+'&serviceKey='+airKey+'&type=json';
+ const url=AIR_BASE+path+'?'+q+'&serviceKey='+keyParam(airKey)+'&type=json';
  const r=await fetch(url); const t=await r.text();
  let j; try{ j=JSON.parse(t); }catch(e){ throw new Error('형식오류'); }
  const code=airDeep(j,'resultCode');
@@ -5172,6 +5187,10 @@ function airRenderResult(r){
  const idx=r.curve, fl=r.flights;
  let cls,call,why;
  if(r.err&&!fl){ cls='na'; call='조회 실패'; why=r.err+' — 활용신청과 인증키를 확인하세요.'; }
+ else if(!fl&&r.total===0){ cls='na'; call='도착편을 못 받았습니다';
+   why='요청은 통했지만 목록이 비어 있습니다. 「API 진단」을 눌러 어느 서비스가 열리는지 확인하세요.'; }
+ else if(!fl&&r.total>0){ cls='na'; call='지금은 도착편이 없습니다';
+   why=`오늘 편성 <b>${r.total}편</b> 중 지금 ±40분에는 없습니다. 시간 분포 그래프에서 붐비는 때를 확인하세요.`; }
  else{
   const busy = idx>=70 || fl>=12;
   const slow = idx<=30 && fl<=4;
