@@ -965,7 +965,8 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   </section>
 
   <section style="padding-top:0">
-    <div class="eyebrow"><span>한국공항공사 API</span><button id="air_probe">API 진단</button></div>
+    <div class="eyebrow"><span>한국공항공사 API</span><span><button id="air_probe">API 진단</button>
+      <button id="air_copy" hidden>진단 복사</button></span></div>
     <div class="mt" style="color:var(--dim);font-size:10.5px;margin-bottom:8px">
       8종 주소가 이미 들어 있습니다. <b>「API 진단」만 누르면</b> 어느 서비스가 열리는지 바로 나옵니다.
       아래 칸은 포털 주소가 바뀌었을 때만 쓰세요. 인증키는 자동으로 붙습니다.</div>
@@ -4678,7 +4679,9 @@ async function kacFetch(kind,opt){
  if(!raw) throw new Error('주소 미설정');
  if(!airKey) throw new Error('키없음');
  const base=kacParams(kind,opt);
- if(!kacBuild(raw,base)) throw new Error('주소 형식 오류');
+ const probe=kacBuild(raw,base);
+ if(!probe) throw new Error('주소 형식 오류');
+ const shown=probe.replace(/serviceKey=[^&]*/,'serviceKey=●●●');
  const t0=Date.now();
  const per=+base.numOfRows||300, maxPage=(opt&&opt.pages)||3;
  let all=[], total=null, pages=0, lastPeek='', xml=false;
@@ -4686,19 +4689,19 @@ async function kacFetch(kind,opt){
   const url=kacBuild(raw,Object.assign({},base,{pageNo:pg}));
   let r,txt;
   try{ r=await fetch(url); txt=await r.text(); }
-  catch(e){ kacDiag[kind]={ok:false,msg:'연결 차단(CORS 또는 네트워크)',ms:Date.now()-t0}; throw new Error('연결 차단'); }
+  catch(e){ kacDiag[kind]={ok:false,msg:'연결 차단(CORS 또는 네트워크)',ms:Date.now()-t0,url:shown}; throw new Error('연결 차단'); }
   const peek=String(txt||'').replace(/\s+/g,' ').slice(0,300); lastPeek=peek;
   let j=null; try{ j=JSON.parse(txt); }catch(e){}
   let rows;
   if(!j){
    rows=kacParseXml(txt); if(rows.length) xml=true;
    if(!rows.length&&pg===1){
-    kacDiag[kind]={ok:false,msg:'형식 오류',ms:Date.now()-t0,peek};
+    kacDiag[kind]={ok:false,msg:'형식 오류',ms:Date.now()-t0,peek,url:shown};
     throw new Error('형식 오류'); }
   }else{
    const code=airDeep(j,'resultCode'), msg=airDeep(j,'resultMsg')||airDeep(j,'returnAuthMsg');
    if(code!=null&&!(code==='00'||code===0||code==='0')){
-    kacDiag[kind]={ok:false,msg:'거부: '+(msg||code),ms:Date.now()-t0,peek};
+    kacDiag[kind]={ok:false,msg:'거부: '+(msg||code),ms:Date.now()-t0,peek,url:shown};
     throw new Error(msg||'거부'); }
    if(total==null){ const tc=airDeep(j,'totalCount'); if(tc!=null) total=+tc; }
    rows=airItems(j);
@@ -4708,7 +4711,7 @@ async function kacFetch(kind,opt){
   if(total!=null&&all.length>=total) break;
  }
  kacDiag[kind]={ok:true,msg:all.length?(xml?'XML 응답':'정상'):'응답은 왔지만 목록이 비어 있음',
-   n:all.length,total,pages,ms:Date.now()-t0,sample:all[0]||null,peek:lastPeek};
+   n:all.length,total,pages,ms:Date.now()-t0,sample:all[0]||null,peek:lastPeek,url:shown};
  return all;
 }
 function kacParseXml(t){
@@ -4929,8 +4932,11 @@ async function kacProbe(){
  for(const K of KAC_KIND){
   if(!kacAddr(K.k)){ out.push({...K,state:'미설정'}); continue; }
   try{ const rows=await kacFetch(K.k,{ymd,from:'0000',to:'2359',intl:false});
-       out.push({...K,state:'정상',cnt:rows.length,sample:rows[0]||null,peek:(kacDiag[K.k]||{}).peek}); }
-  catch(e){ out.push({...K,state:'실패',msg:(kacDiag[K.k]||{}).msg||e.message,peek:(kacDiag[K.k]||{}).peek}); }
+       const D=kacDiag[K.k]||{};
+       out.push({...K,state:'정상',cnt:rows.length,sample:rows[0]||null,
+                 peek:D.peek,url:D.url,total:D.total,note:rows.length?'':D.msg}); }
+  catch(e){ const D=kacDiag[K.k]||{};
+       out.push({...K,state:'실패',msg:D.msg||e.message,peek:D.peek,url:D.url}); }
  }
  return out;
 }
@@ -4947,10 +4953,29 @@ function kacDiagDraw(list){
   const keys=x.sample?Object.keys(x.sample).slice(0,10).join(', '):'';
   return `<div class="shrow"><span>${x.n} · ${x.hint}</span>
    <b class="mono" style="color:${col}">${x.state}${x.cnt!=null?' '+x.cnt+'건':''}</b></div>`+
-   (x.msg?`<div class="mt" style="color:var(--vac);font-size:10px;margin:-2px 0 6px">${x.msg}</div>`:'')+
+   (x.msg||x.note?`<div class="mt" style="color:var(--vac);font-size:10px;margin:-2px 0 6px">${x.msg||x.note}</div>`:'')+
+   (x.url?`<div class="mt mono" style="color:var(--faint);font-size:9px;margin:-2px 0 4px;word-break:break-all">요청: ${String(x.url).replace(/</g,'&lt;')}</div>`:'')+
    (keys?`<div class="mt" style="color:var(--faint);font-size:10px;margin:-2px 0 6px">항목: ${keys}</div>`:'')+
-   (x.peek?`<div class="mt mono" style="color:var(--faint);font-size:9px;margin:-2px 0 8px;word-break:break-all">원문: ${String(x.peek).replace(/</g,'&lt;').slice(0,200)}</div>`:'');
+   (x.peek?`<div class="mt mono" style="color:var(--faint);font-size:9px;margin:-2px 0 8px;word-break:break-all">원문: ${String(x.peek).replace(/</g,'&lt;').slice(0,240)}</div>`:'');
  }).join('');
+ kacDiagLast=list;
+ const cp=document.getElementById('air_copy'); if(cp) cp.hidden=false;
+}
+let kacDiagLast=null;
+/* 진단 결과를 글로 만들어 복사한다 — 인증키는 가려져 있다 */
+function kacDiagText(){
+ const L=kacDiagLast||[];
+ const out=['공차 API 진단 '+new Date().toLocaleString('ko-KR'),
+            '청사 '+airTerm+' · 키 '+(airKey?'있음':'없음')];
+ L.forEach(x=>{
+  out.push('');
+  out.push('['+x.n+'] '+x.state+(x.cnt!=null?' '+x.cnt+'건':'')+(x.total!=null?' / 전체 '+x.total:''));
+  if(x.msg||x.note) out.push('  '+(x.msg||x.note));
+  if(x.url) out.push('  요청 '+x.url);
+  if(x.peek) out.push('  원문 '+String(x.peek).slice(0,240));
+ });
+ if(gmpStep) out.push('','[걸러내기] '+Object.keys(gmpStep).map(k=>k+' '+gmpStep[k]).join(' / '));
+ return out.join('\n');
 }
 
 const AIR_BASE='https://apis.data.go.kr/B551177/';
@@ -5223,6 +5248,22 @@ function initAirAp(){
        const bx=document.getElementById('air_diag');
        if(bx&&bx.scrollIntoView) bx.scrollIntoView({block:'center'}); }
   finally { p.textContent='API 진단'; p.disabled=false; } };
+ const cp=document.getElementById('air_copy');
+ if(cp) cp.onclick=async()=>{
+  const txt=kacDiagText();
+  let done=false;
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){
+        await navigator.clipboard.writeText(txt); done=true; } }catch(e){}
+  if(!done){
+   const ta=document.createElement('textarea');
+   ta.value=txt; ta.style.cssText='position:fixed;left:0;top:0;width:98%;height:60vh;z-index:99;font-size:11px';
+   document.body.appendChild(ta); ta.select();
+   try{ done=document.execCommand('copy'); }catch(e){}
+   if(done) ta.remove(); else { ta.onblur=()=>ta.remove(); alert('길게 눌러 전체 선택 후 복사하세요.'); }
+  }
+  cp.textContent=done?'복사됨':'진단 복사';
+  setTimeout(()=>{cp.textContent='진단 복사';},2000);
+ };
  airTermButtons(); airUrlDraw(); kacDiagDraw(null);
 }
 async function renderAir(){
