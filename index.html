@@ -972,8 +972,16 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
     <div class="mt" style="color:var(--faint);font-size:10px;margin-bottom:10px">
       포털의 <b>일반 인증키</b>를 붙여넣으면 됩니다. 요청주소를 통째로 붙여넣어도 키만 골라냅니다.
       인천·김포·기상청·특일이 모두 이 키 하나를 씁니다.</div>
+    <div class="eyebrow"><span>TMAP appKey</span><span id="air_tmst" class="mono" style="font-size:10px;color:var(--faint)"></span></div>
+    <div class="fr" style="margin-bottom:4px">
+      <input id="air_tm_in" placeholder="TMAP appKey 붙여넣기" autocomplete="off" spellcheck="false" style="flex:1">
+      <button id="air_tm_save">저장</button></div>
+    <div class="mt" style="color:var(--faint);font-size:10px;margin-bottom:10px">
+      실시간 소요시간·경로 보정에 씁니다. 설정 화면에 들어가지 않아도 여기서 바로 바꿀 수 있습니다.</div>
     <div class="eyebrow"><span>한국공항공사 API</span><span><button id="air_probe">API 진단</button>
       <button id="air_copy" hidden>진단 복사</button></span></div>
+    <textarea id="air_diagtext" hidden readonly rows="8"
+      style="width:100%;font-size:10px;line-height:1.45;margin:6px 0 4px"></textarea>
     <div class="mt" style="color:var(--dim);font-size:10.5px;margin-bottom:8px">
       8종 주소가 이미 들어 있습니다. <b>「API 진단」만 누르면</b> 어느 서비스가 열리는지 바로 나옵니다.
       아래 칸은 포털 주소가 바뀌었을 때만 쓰세요. 인증키는 자동으로 붙습니다.</div>
@@ -3802,6 +3810,7 @@ function renderAnal(){
 
 /* ─── 탭 ─── */
 document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{
+ try{ clearStuckOverlay(); }catch(e){}
  document.querySelectorAll('.tabbar button').forEach(x=>x.className=(x===b?'on':''));
  ['drive','anal','book','tax','air'].forEach(t=>{const el=document.getElementById('pane-'+t);
   if(el) el.className='pane'+(t===b.dataset.tab?' on':'');});
@@ -4180,7 +4189,10 @@ document.getElementById('pre_v').onclick=()=>{
 document.getElementById('pre_m').onclick=()=>{
  CFG.st=6; CFG.bd=0; CFG.s=[{h:10,g:100000},{h:14,g:200000},{h:18,g:280000}]; fillCfg();};
 document.getElementById('opset').onclick=()=>{
- document.getElementById('key').value=apiKey; fillCfg(); drawMy(); setSheet.classList.add('on');};
+ try{ clearStuckOverlay(); }catch(e){}
+ try{ document.getElementById('key').value=apiKey; fillCfg(); drawMy(); }catch(e){ console.warn('설정',e.message); }
+ setSheet.classList.add('on');
+ const cd=setSheet.querySelector('.card'); if(cd) cd.scrollTop=0;};
 document.getElementById('setclose').onclick=async()=>{
  const msg=document.getElementById('setmsg');
  // 붙여넣기 사고 방지: 공백·줄바꿈·따옴표 제거
@@ -4957,11 +4969,20 @@ function airKeyClean(raw){
  v=v.replace(/[\s"'`<>]/g,'');
  return v;
 }
+const keyMask=k=> k ? (k.slice(0,4)+'●●●'+k.slice(-4)+' ('+k.length+'자)') : '';
 function airKeyState(){
- const el=document.getElementById('air_keyst'); if(!el) return;
- el.textContent=airKey ? ('저장됨 '+airKey.slice(0,4)+'●●●'+airKey.slice(-4)+' ('+airKey.length+'자)')
-                       : '아직 없음';
- el.style.color=airKey?'var(--occ)':'var(--vac)';
+ const el=document.getElementById('air_keyst');
+ if(el){ el.textContent=airKey?('저장됨 '+keyMask(airKey)):'아직 없음';
+         el.style.color=airKey?'var(--occ)':'var(--vac)'; }
+ const tl=document.getElementById('air_tmst');
+ if(tl){ tl.textContent=apiKey?('저장됨 '+keyMask(apiKey)):'아직 없음';
+         tl.style.color=apiKey?'var(--occ)':'var(--vac)'; }
+}
+/* 옛 버전에서 화면을 덮는 상자가 남아 있을 수 있다. 탭을 옮길 때 걷어낸다. */
+function clearStuckOverlay(){
+ document.querySelectorAll('body > textarea').forEach(el=>{
+  const st=el.style&&el.style.position;
+  if(st==='fixed'||st==='absolute') el.remove(); });
 }
 function kacDiagDraw(list){
  const box=document.getElementById('air_diag'); if(!box) return;
@@ -5279,6 +5300,15 @@ function initAirAp(){
   finally{ ks.textContent='저장'; ks.disabled=false; }
   holLoadYears().then(ctxDraw).catch(()=>{});
  };
+ const ti=document.getElementById('air_tm_in'), ts=document.getElementById('air_tm_save');
+ if(ts) ts.onclick=async()=>{
+  const v=airKeyClean(ti.value);
+  if(!v){ alert('TMAP appKey 를 붙여넣어 주세요.'); return; }
+  apiKey=v; await Store.set(KEY_API,apiKey);
+  const _k=document.getElementById('key'); if(_k) _k.value=apiKey;
+  ti.value=''; airKeyState();
+  ts.textContent='저장됨'; setTimeout(()=>{ts.textContent='저장';},1500);
+ };
  airKeyState();
  const p=document.getElementById('air_probe');
  if(p) p.onclick=async()=>{ p.textContent='확인 중…'; p.disabled=true;
@@ -5293,11 +5323,11 @@ function initAirAp(){
   try{ if(navigator.clipboard&&navigator.clipboard.writeText){
         await navigator.clipboard.writeText(txt); done=true; } }catch(e){}
   if(!done){
-   const ta=document.createElement('textarea');
-   ta.value=txt; ta.style.cssText='position:fixed;left:0;top:0;width:98%;height:60vh;z-index:99;font-size:11px';
-   document.body.appendChild(ta); ta.select();
-   try{ done=document.execCommand('copy'); }catch(e){}
-   if(done) ta.remove(); else { ta.onblur=()=>ta.remove(); alert('길게 눌러 전체 선택 후 복사하세요.'); }
+   // 화면을 덮지 않는다. 진단 아래에 펼쳐서 직접 복사하시게 한다.
+   const box=document.getElementById('air_diagtext');
+   if(box){ box.hidden=false; box.value=txt;
+            try{ box.select(); done=document.execCommand('copy'); }catch(e){}
+            if(!done&&box.scrollIntoView) box.scrollIntoView({block:'center'}); }
   }
   cp.textContent=done?'복사됨':'진단 복사';
   setTimeout(()=>{cp.textContent='진단 복사';},2000);
