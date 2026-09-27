@@ -967,10 +967,10 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   <section style="padding-top:0">
     <div class="eyebrow"><span>한국공항공사 API</span><button id="air_probe">API 진단</button></div>
     <div class="mt" style="color:var(--dim);font-size:10.5px;margin-bottom:8px">
-      김포는 인천과 기관이 달라 주소가 다릅니다. 공공데이터포털 상세 화면의 <b>요청주소(엔드포인트)</b>를
-      그대로 붙여넣으세요. 인증키는 자동으로 붙습니다.</div>
+      8종 주소가 이미 들어 있습니다. <b>「API 진단」만 누르면</b> 어느 서비스가 열리는지 바로 나옵니다.
+      아래 칸은 포털 주소가 바뀌었을 때만 쓰세요. 인증키는 자동으로 붙습니다.</div>
+    <div id="air_diag" style="margin-bottom:10px"></div>
     <div id="air_urls"></div>
-    <div id="air_diag" style="margin-top:8px"></div>
   </section>
 </div>
 <div class="pane" id="pane-anal">
@@ -4593,6 +4593,8 @@ const KAC_BASE='https://apis.data.go.kr/B551178/';
 const TAGO_BASE='https://apis.data.go.kr/1613000/DmstcFlightNvgInfo/';
 const GMP='GMP';
 const KAC_KIND=[
+ {k:'info',   n:'운항현황',    hint:'실시간 항공운항 현황 · 공항·도착을 서버가 걸러줌',
+  def:KAC_BASE+'flight-status/info'},
  {k:'arrival',n:'도착편',      hint:'실시간 항공기 운항정보 조회 · 도착 (D-3~D+6)',
   def:KAC_BASE+'flight-status/arrival'},
  {k:'depart', n:'출발편',      hint:'실시간 항공기 운항정보 조회 · 출발',
@@ -4607,10 +4609,12 @@ const KAC_KIND=[
   def:KAC_BASE+'flight-schedule/int'},
  {k:'schDom', n:'국내선 스케줄', hint:'항공기 운항 스케줄 · 국내선',
   def:KAC_BASE+'flight-schedule/dom'},
+ {k:'detail', n:'운항 상세',  hint:'지연·결항까지 나오는 상세 현황',
+  def:KAC_BASE+'flight-status/detail'},
  {k:'tago',   n:'국내항공운항정보',hint:'국토교통부 TAGO · 운임 포함',
   def:TAGO_BASE+'GetFlightOpratInfoList'}];
 const KAC_DEF={}; KAC_KIND.forEach(K=>{ if(K.def) KAC_DEF[K.k]=K.def; });
-let kacUrl={}, kacDiag={};
+let kacUrl={}, kacDiag={}, gmpStep=null;
 const KEY_KACURL='gongcha:kacurl';
 const kacAddr=k=> kacUrl[k] || KAC_DEF[k] || null;
 
@@ -4619,18 +4623,26 @@ function kacParams(kind,o){
  const {ymd,from,to,intl,flight}=o||{};
  const line=intl?'I':'D';
  switch(kind){
-  case 'arrival': case 'depart': case 'taxfree':
-   return {pageNo:1,numOfRows:300,searchday:ymd,from_time:from,to_time:to,
+  case 'info':          // schLineType/schIOType/schAirCode · 시간은 HHMM
+   return {pageNo:1,numOfRows:999,schAirCode:GMP,schIOType:'I',schLineType:line,
+           schStTime:from,schEdTime:to,type:'json'};
+  case 'arrival': case 'depart':
+   return {pageNo:1,numOfRows:999,searchday:ymd,from_time:from,to_time:to,
            airport_code:GMP,line,type:'json'};
+  case 'taxfree':       // 이 서비스만 searchDate/searchFrom/searchTo/arrvCityCode 를 쓴다
+   return {pageNo:1,numOfRows:999,searchDate:ymd,searchFrom:from,searchTo:to,
+           arrvCityCode:GMP,type:'json'};
+  case 'detail':
+   return {pageNo:1,numOfRows:999,type:'json'};
   case 'aircraft':
-   return {pageNo:1,numOfRows:300,schAirCode:GMP,Line:line,
+   return {pageNo:1,numOfRows:999,schAirCode:GMP,Line:line,
            schStTime:ymd&&from?ymd+from:undefined,schEdTime:ymd&&to?ymd+to:undefined,
            schFln:flight,type:'json'};
   case 'apron':
-   return {pageNo:1,numOfRows:300,flightdate:ymd,airport:GMP,
+   return {pageNo:1,numOfRows:999,flightdate:ymd,airport:GMP,
            line:intl?'국제':'국내',io:'I',type:'json'};
   case 'schInt': case 'schDom':
-   return {pageNo:1,numOfRows:300,schDate:ymd,schArrvCityCode:GMP,type:'json'};
+   return {pageNo:1,numOfRows:999,schDate:ymd,schArrvCityCode:GMP,type:'json'};
   case 'tago':
    return {pageNo:1,numOfRows:100,_type:'json'};
   default:
@@ -4665,27 +4677,39 @@ async function kacFetch(kind,opt){
  const raw=kacAddr(kind);
  if(!raw) throw new Error('주소 미설정');
  if(!airKey) throw new Error('키없음');
- const url=kacBuild(raw,kacParams(kind,opt));
- if(!url) throw new Error('주소 형식 오류');
+ const base=kacParams(kind,opt);
+ if(!kacBuild(raw,base)) throw new Error('주소 형식 오류');
  const t0=Date.now();
- let r,txt;
- try{ r=await fetch(url); txt=await r.text(); }
- catch(e){ kacDiag[kind]={ok:false,msg:'연결 차단(CORS 또는 네트워크)',ms:Date.now()-t0}; throw new Error('연결 차단'); }
- const peek=String(txt||'').replace(/\s+/g,' ').slice(0,300);
- let j=null; try{ j=JSON.parse(txt); }catch(e){}
- if(!j){
-  const rows=kacParseXml(txt);
-  if(rows.length){ kacDiag[kind]={ok:true,msg:'XML 응답',n:rows.length,ms:Date.now()-t0,sample:rows[0],peek}; return rows; }
-  kacDiag[kind]={ok:false,msg:'형식 오류',ms:Date.now()-t0,peek};
-  throw new Error('형식 오류');
+ const per=+base.numOfRows||300, maxPage=(opt&&opt.pages)||3;
+ let all=[], total=null, pages=0, lastPeek='', xml=false;
+ for(let pg=1; pg<=maxPage; pg++){
+  const url=kacBuild(raw,Object.assign({},base,{pageNo:pg}));
+  let r,txt;
+  try{ r=await fetch(url); txt=await r.text(); }
+  catch(e){ kacDiag[kind]={ok:false,msg:'연결 차단(CORS 또는 네트워크)',ms:Date.now()-t0}; throw new Error('연결 차단'); }
+  const peek=String(txt||'').replace(/\s+/g,' ').slice(0,300); lastPeek=peek;
+  let j=null; try{ j=JSON.parse(txt); }catch(e){}
+  let rows;
+  if(!j){
+   rows=kacParseXml(txt); if(rows.length) xml=true;
+   if(!rows.length&&pg===1){
+    kacDiag[kind]={ok:false,msg:'형식 오류',ms:Date.now()-t0,peek};
+    throw new Error('형식 오류'); }
+  }else{
+   const code=airDeep(j,'resultCode'), msg=airDeep(j,'resultMsg')||airDeep(j,'returnAuthMsg');
+   if(code!=null&&!(code==='00'||code===0||code==='0')){
+    kacDiag[kind]={ok:false,msg:'거부: '+(msg||code),ms:Date.now()-t0,peek};
+    throw new Error(msg||'거부'); }
+   if(total==null){ const tc=airDeep(j,'totalCount'); if(tc!=null) total=+tc; }
+   rows=airItems(j);
+  }
+  pages=pg; all=all.concat(rows);
+  if(rows.length<per) break;                       // 마지막 쪽
+  if(total!=null&&all.length>=total) break;
  }
- const code=airDeep(j,'resultCode'), msg=airDeep(j,'resultMsg')||airDeep(j,'returnAuthMsg');
- if(code!=null&&!(code==='00'||code===0||code==='0')){
-  kacDiag[kind]={ok:false,msg:'거부: '+(msg||code),ms:Date.now()-t0,peek}; throw new Error(msg||'거부'); }
- const rows=airItems(j);
- kacDiag[kind]={ok:true,msg:rows.length?'정상':'응답은 왔지만 목록이 비어 있음',
-   n:rows.length,ms:Date.now()-t0,sample:rows[0]||null,peek};
- return rows;
+ kacDiag[kind]={ok:true,msg:all.length?(xml?'XML 응답':'정상'):'응답은 왔지만 목록이 비어 있음',
+   n:all.length,total,pages,ms:Date.now()-t0,sample:all[0]||null,peek:lastPeek};
+ return all;
 }
 function kacParseXml(t){
  try{
@@ -4713,30 +4737,30 @@ function kacTime(s){                      // '202608150525' · '0525' 둘 다 �
 const hhmmNum=s=>{ const d=String(s||'').replace(/[^0-9]/g,'');
  return d.length>=4 ? (+d.slice(0,2))*60+(+d.slice(2,4)) : null; };
 function kacNorm(r){
- const io=String(pick(r,'io','ioType')||'').trim();
- const line=String(pick(r,'line','lineCode','Line')||'');
- const est=String(pick(r,'estimateddatetime','etd')||'');
- const sch=String(pick(r,'scheduledatetime','std')||'');
+ const io=String(pick(r,'io','io_type','ioType','internationalIoType')||'').trim();
+ const line=String(pick(r,'line','lineCode','line_code','Line')||'');
+ const est=String(pick(r,'estimateddatetime','etd','domesticArrivalTime','internationalTime')||'');
+ const sch=String(pick(r,'scheduledatetime','std','domesticStartTime')||'');
  return {
-  fid:     pick(r,'fid','ufid'),
-  flight:  pick(r,'flightid','airFln','airfln','vihicleId','internationalNum','domesticNum'),
-  airline: pick(r,'airline','airlineKorean','airlineNm'),
-  from:    pick(r,'depAirport','boardingKor','depAirportNm','startcity'),
-  fromCode:pick(r,'depAirportCode','city','startcityCode'),
-  to:      pick(r,'arrAirport','arrivedKor','arrAirportNm','arrivalcity'),
-  toCode:  pick(r,'arrAirportCode','airport','arrivalcityCode'),
+  fid:     pick(r,'fid','ufid','UFID'),
+  flight:  pick(r,'flightid','airFln','air_fln','airfln','vihicleId','internationalNum','domesticNum'),
+  airline: pick(r,'airline','airlineKorean','airline_korean','airlineNm'),
+  from:    pick(r,'depAirport','boardingKor','boarding_kor','depAirportNm','startcity','depcity'),
+  fromCode:pick(r,'depAirportCode','city','startcityCode','depcitycode','depCityCode'),
+  to:      pick(r,'arrAirport','arrivedKor','arrived_kor','arrAirportNm','arrivalcity','arrvcity','arrvCity'),
+  toCode:  pick(r,'arrAirportCode','arrvAirportCode','airport','arrivalcityCode','arrvcitycode','arrvCityCode'),
   time:    kacTime(est)||kacTime(sch),
   sched:   kacTime(sch),
   raw:     est||sch,
-  type:    pick(r,'icaoApmCd','aircraftType','acftType'),
-  reg:     pick(r,'aplRegNo','regno'),
+  type:    pick(r,'icaoApmCd','aircraftType','acftType','schAPM'),
+  reg:     pick(r,'aplRegNo','regno','schAPLno'),
   gate:    pick(r,'gate'),
-  bag:     pick(r,'baggageClaim'),
-  status:  pick(r,'rmkKor','rmkEng','remark'),
+  bag:     pick(r,'baggageClaim','baggage_claim'),
+  status:  pick(r,'rmkKor','rmk_kor','rmkEng','remark'),
   share:   /^Y$/i.test(String(pick(r,'codeshare','cdsrYn')||'')),
   master:  pick(r,'masterflightid'),
   // 도착/출발: 'I'/'O' 또는 '도착'/'출발'
-  arrival: !io ? null : (/도착|^I/i.test(io) ? true : (/출발|^O/i.test(io) ? false : null)),
+  arrival: !io ? null : (/도착|^IN?$|^I/i.test(io) ? true : (/출발|^OUT?$|^O/i.test(io) ? false : null)),
   intl:    /국제|^I$/i.test(line),
   dom:     /국내|^D$/i.test(line)
  };
@@ -4787,25 +4811,71 @@ async function gmpArrivals(term,at){
  const ck='gmp|'+term+'|'+Math.floor(t.getTime()/300000);
  const c=airCache[ck]; if(c) return c.v;
  const ymd=kacYMD(t);
- const opt={ymd,from:'0000',to:'2359',intl};
- let rows=null, used=null, lastErr=null;
- for(const k of ['arrival','apron','taxfree','aircraft']){
+ /* 전국 하루치를 다 받으면 수천 건이라 김포 것이 뒤쪽 페이지로 밀린다.
+    지금 앞뒤 두 시간 반만 받는다. */
+ const m0=t.getHours()*60+t.getMinutes();
+ const cl=m=>Math.max(0,Math.min(1439,m));
+ const hm=m=>String(Math.floor(cl(m)/60)).padStart(2,'0')+String(cl(m)%60).padStart(2,'0');
+ const opt={ymd,from:hm(m0-150),to:hm(m0+150),intl};
+ let rows=null, used=null, lastErr=null, tried=[];
+ for(const k of ['info','arrival','apron','taxfree','detail','aircraft']){
   if(!kacAddr(k)) continue;
-  try{ rows=(await kacFetch(k,opt)).map(kacNorm); used=k; break; }
-  catch(e){ lastErr=e.message; }
+  try{
+   const got=(await kacFetch(k,opt)).map(kacNorm);
+   tried.push(k+' '+got.length);
+   if(got.length){ rows=got; used=k; break; }     // 빈 목록이면 다음 서비스로
+   if(!rows){ rows=got; used=k; }                 // 전부 비면 마지막 것을 쓴다
+  }
+  catch(e){ lastErr=e.message; tried.push(k+' ✗'); }
  }
  if(!rows) throw new Error(lastErr||'주소 미설정');
- let v=rows.filter(r=>r.arrival!==false);
- // 전국 공항이 섞여 오므로 김포 도착만 남긴다
- if(v.some(r=>r.toCode||r.to))
-   v=v.filter(r=>!(r.toCode||r.to) || /GMP/i.test(r.toCode||'') || /김포/.test(r.to||''));
- if(v.some(r=>r.intl||r.dom)) v=v.filter(r=>intl?r.intl:r.dom);
- v=v.filter(r=>!r.share);                                  // 코드쉐어 중복 제거
- v=v.filter(r=>!/결항|취소|회항|CANCEL|DIVERT/i.test(r.status||''));
+ /* 어느 단계에서 몇 건이 빠졌는지 남긴다. 0으로만 보일 때 원인을 짚기 위해서다.
+    모르는 값(도착지·국내국제 미표기)은 버리지 않고 남긴다 — 버리면 통째로 0이 된다. */
+ const step={'받음':rows.length};
+ let v=rows.filter(r=>r.arrival!==false);       step['도착편']=v.length;
+ // 도착지가 분명히 다른 공항인 행만 뺀다. 도착지가 안 적힌 행은 남긴다.
+ v=v.filter(r=>!(r.toCode||r.to) || /GMP|RKSS/i.test(r.toCode||'') || /김포/.test(r.to||''));
+ step['김포']=v.length;
+ if(v.some(r=>r.intl||r.dom))
+   v=v.filter(r=>(!r.intl&&!r.dom) || (intl?r.intl:r.dom));
+ step[intl?'국제선':'국내선']=v.length;
+ v=v.filter(r=>!r.share);                                    step['코드쉐어']=v.length;
+ v=v.filter(r=>!/결항|취소|회항|CANCEL|DIVERT/i.test(r.status||'')); step['결항제외']=v.length;
+ step['시각있음']=v.filter(r=>hhmmNum(r.time)!=null).length;
  v.sort((a,b)=>(hhmmNum(a.time)??0)-(hhmmNum(b.time)??0));
- const out={rows:v,src:used};
+ step['거친 서비스']=tried.join(' · ');
+ gmpStep=step;
+ const out={rows:v,src:used,step};
  airCache[ck]={t:Date.now(),v:out}; return out;
 }
+/* 하루 시간대 분포는 주간 운항 스케줄에서 뽑는다 (실시간은 앞뒤 2시간 반만 받기 때문) */
+const WD=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+async function gmpDayCurve(intl,t){
+ const kind=intl?'schInt':'schDom';
+ const ck='gmpcv|'+kacYMD(t)+'|'+(intl?'I':'D');
+ if(airCache[ck]) return airCache[ck].v;
+ let cnt=null;
+ try{
+  const rows=await kacFetch(kind,{ymd:kacYMD(t),intl,pages:3});
+  const day=WD[t.getDay()], today=kacYMD(t);
+  const c=new Array(24).fill(0);
+  for(const r of rows){
+   const on=pick(r,(intl?'international':'domestic')+day);
+   if(on!=null&&!/^Y$/i.test(String(on))) continue;
+   if(intl){ const io=String(pick(r,'internationalIoType')||''); if(io&&!/^IN/i.test(io)) continue; }
+   const st=String(pick(r,(intl?'international':'domestic')+'Stdate')||'').replace(/[^0-9]/g,'').slice(0,8);
+   const ed=String(pick(r,(intl?'international':'domestic')+'Eddate')||'').replace(/[^0-9]/g,'').slice(0,8);
+   if(st&&st>today) continue;
+   if(ed&&ed<today) continue;
+   const m=hhmmNum(pick(r,intl?'internationalTime':'domesticArrivalTime'));
+   if(m!=null) c[Math.floor(m/60)%24]++;
+  }
+  if(c.some(x=>x)) cnt=c;
+ }catch(e){}
+ airCache[ck]={t:Date.now(),v:cnt};
+ return cnt;
+}
+
 /* 도착편에는 기종이 없다. 기종 API 로 편명→기종·게이트를 채운다 */
 async function gmpEnrich(list,intl,t){
  if(!list.length||!kacAddr('aircraft')) return;
@@ -4828,13 +4898,15 @@ async function gmpPredict(term,at){
  const out={term,hour:t.getHours(),flights:0,pax:0,curve:null,dayCurve:null,
             wait:null,waitN:0,congest:null,err:null,live:false,gmp:true,intl};
  try{
-  const {rows,src}=await gmpArrivals(term,t);
-  out.src=src; out.total=rows.length;
-  const cnt=new Array(24).fill(0);
-  rows.forEach(r=>{ const m=hhmmNum(r.time); if(m!=null) cnt[Math.floor(m/60)%24]++; });
+  const {rows,src,step}=await gmpArrivals(term,t);
+  out.src=src; out.total=rows.length; out.step=step;
+  let cnt=await gmpDayCurve(intl,t);
+  if(!cnt){ cnt=new Array(24).fill(0);
+   rows.forEach(r=>{ const m=hhmmNum(r.time); if(m!=null) cnt[Math.floor(m/60)%24]++; });
+   out.partial=true; }
   const mx=Math.max.apply(null,cnt)||1;
   out.dayCount=cnt; out.dayCurve=cnt.map(v=>Math.round(v/mx*100));
-  out.curve=out.dayCurve[t.getHours()]; out.live=true;
+  out.curve=out.partial?null:out.dayCurve[t.getHours()]; out.live=true;
   const a=(t.getHours()*60+t.getMinutes())-40, b=a+80;
   const near=rows.filter(r=>{ const m=hhmmNum(r.time); return m!=null&&m>=a&&m<=b; });
   if(near.some(r=>!r.type)) await gmpEnrich(near,intl,t);
@@ -4865,7 +4937,12 @@ async function kacProbe(){
 function kacDiagDraw(list){
  const box=document.getElementById('air_diag'); if(!box) return;
  if(!list){ box.innerHTML='<div class="mt" style="color:var(--faint);font-size:11px">「API 진단」을 누르면 8종이 실제로 열리는지 확인합니다.</div>'; return; }
- box.innerHTML=list.map(x=>{
+ const okN=list.filter(x=>x.state==='정상').length;
+ const got=list.reduce((a,x)=>a+(x.cnt||0),0);
+ const head=`<div class="shrow" style="border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:6px">
+   <span><b>진단 결과</b></span>
+   <b class="mono" style="color:${okN?'var(--occ)':'var(--vac)'}">${okN}/${list.length}종 열림 · 받은 자료 ${got}건</b></div>`;
+ box.innerHTML=head+list.map(x=>{
   const col=x.state==='정상'?'var(--occ)':x.state==='미설정'?'var(--faint)':'var(--vac)';
   const keys=x.sample?Object.keys(x.sample).slice(0,10).join(', '):'';
   return `<div class="shrow"><span>${x.n} · ${x.hint}</span>
@@ -5142,7 +5219,10 @@ function initAirAp(){
   airAp=b.dataset.ap; airTermButtons(); renderAir(); });
  const p=document.getElementById('air_probe');
  if(p) p.onclick=async()=>{ p.textContent='확인 중…'; p.disabled=true;
-  try{ kacDiagDraw(await kacProbe()); } finally { p.textContent='API 진단'; p.disabled=false; } };
+  try{ kacDiagDraw(await kacProbe());
+       const bx=document.getElementById('air_diag');
+       if(bx&&bx.scrollIntoView) bx.scrollIntoView({block:'center'}); }
+  finally { p.textContent='API 진단'; p.disabled=false; } };
  airTermButtons(); airUrlDraw(); kacDiagDraw(null);
 }
 async function renderAir(){
@@ -5188,7 +5268,12 @@ function airRenderResult(r){
  let cls,call,why;
  if(r.err&&!fl){ cls='na'; call='조회 실패'; why=r.err+' — 활용신청과 인증키를 확인하세요.'; }
  else if(!fl&&r.total===0){ cls='na'; call='도착편을 못 받았습니다';
-   why='요청은 통했지만 목록이 비어 있습니다. 「API 진단」을 눌러 어느 서비스가 열리는지 확인하세요.'; }
+   const st=r.step?Object.keys(r.step).map(k=>k+' '+r.step[k]).join(' → '):'';
+   why=(r.step&&r.step['받음']>0
+        ? '서버는 <b>'+r.step['받음']+'건</b>을 줬는데 걸러내는 중에 모두 빠졌습니다.'
+        : '서버가 빈 목록을 줬습니다. 김포 서비스 활용신청이 승인됐는지 확인하세요.')
+       +(st?'<br><span class="mono" style="font-size:10px;color:var(--faint)">'+st+'</span>':'')
+       +(r.src?'<br><span style="font-size:10px;color:var(--faint)">사용한 서비스: '+r.src+'</span>':''); }
  else if(!fl&&r.total>0){ cls='na'; call='지금은 도착편이 없습니다';
    why=`오늘 편성 <b>${r.total}편</b> 중 지금 ±40분에는 없습니다. 시간 분포 그래프에서 붐비는 때를 확인하세요.`; }
  else{
@@ -5198,7 +5283,7 @@ function airRenderResult(r){
   call = busy?'도착 러시 — 콜 잘 뜨는 때':(slow?'한산 — 대기 길어질 수 있음':'보통');
   const parts=[];
   parts.push(`±40분 도착 <b>${fl}편</b> · 추정 승객 <b>${r.pax.toLocaleString()}명</b>`);
-  parts.push(`이 시간대 도착 지수 <b>${idx}</b>/100`);
+  if(idx!=null) parts.push(`이 시간대 도착 지수 <b>${idx}</b>/100`);
   if(r.congest&&(r.congest.k+r.congest.f)>0)
    parts.push(`입국심사 대기 <b>${(r.congest.k+r.congest.f).toLocaleString()}명</b>`+
               ` (내국인 ${r.congest.k.toLocaleString()} · 외국인 ${r.congest.f.toLocaleString()})`);
