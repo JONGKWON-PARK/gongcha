@@ -906,12 +906,14 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 
 <div class="pane" id="pane-air">
   <section>
-    <div class="eyebrow"><span>터미널</span><span id="air_dist" style="letter-spacing:0"></span></div>
-    <div class="pk" id="air_term">
-      <button data-tm="T1" class="on">T1 · 제1터미널</button>
-      <button data-tm="T2">T2 · 제2터미널</button>
+    <div class="eyebrow"><span>공항</span><span id="air_dist" style="letter-spacing:0"></span></div>
+    <div class="pk" id="air_ap">
+      <button data-ap="INC" class="on">인천공항</button>
+      <button data-ap="GMP">김포공항</button>
     </div>
-    <div class="eyebrow" style="margin-top:12px"><span>터미널 비교</span><span style="letter-spacing:0">지금 어디로</span></div>
+    <div class="eyebrow" style="margin-top:10px"><span>청사</span><button id="air_cal" hidden>이 청사로 저장</button></div>
+    <div class="pk" id="air_term"></div>
+    <div class="eyebrow" style="margin-top:12px"><span>청사 비교</span><span style="letter-spacing:0">지금 어디로</span></div>
     <div id="air_cmp"><div class="empty" style="padding:12px">조회하면 T1·T2를 나란히 비교합니다.</div></div>
 
     <div class="verdict" id="air_vd" style="margin-top:12px">
@@ -960,6 +962,15 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
       <button class="opt" id="air_add" style="text-align:center;margin-top:6px">이번 공항 운행 기록</button>
     </div>
     <div id="air_loglist" style="margin-top:8px"></div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="eyebrow"><span>한국공항공사 API</span><button id="air_probe">API 진단</button></div>
+    <div class="mt" style="color:var(--dim);font-size:10.5px;margin-bottom:8px">
+      김포는 인천과 기관이 달라 주소가 다릅니다. 공공데이터포털 상세 화면의 <b>요청주소(엔드포인트)</b>를
+      그대로 붙여넣으세요. 인증키는 자동으로 붙습니다.</div>
+    <div id="air_urls"></div>
+    <div id="air_diag" style="margin-top:8px"></div>
   </section>
 </div>
 <div class="pane" id="pane-anal">
@@ -4533,29 +4544,322 @@ function routeDraw(){
 }
 
 /* ══════════ 공항 모듈 ══════════ */
-const AIRPORTS={T1:{n:'제1터미널',la:37.4491,lo:126.4509,term:['P01','P02']},
-                T2:{n:'제2터미널',la:37.4691,lo:126.4505,term:['P03']}};
+const AIRPORTS={
+ T1:{ap:'INC',n:'인천 T1',full:'인천공항 제1터미널',la:37.4491,lo:126.4509,term:['P01','P02']},
+ T2:{ap:'INC',n:'인천 T2',full:'인천공항 제2터미널',la:37.4691,lo:126.4505,term:['P03']},
+ // 김포 청사 좌표는 초기 추정값이다. 현장에서 '이 청사로 저장'으로 보정할 수 있다.
+ GD:{ap:'GMP',n:'김포 국내선',full:'김포공항 국내선 청사',la:37.5620,lo:126.8015,intl:false},
+ GI:{ap:'GMP',n:'김포 국제선',full:'김포공항 국제선 청사',la:37.5680,lo:126.7950,intl:true}};
+const AP_NAME={INC:'인천공항',GMP:'김포공항'};
+const KEY_APFIX='gongcha:apfix';
 const AIR_RADIUS=15;                       // 공항권 반경(km)
 // 인천공항 시간대별 도착여객 지수(공공데이터 월간통계에서 산출, 17시=100)
 const AIR_CURVE=[9,9,4,27,46,54,62,61,39,33,37,64,57,71,73,85,87,100,70,62,60,61,41,15];
 const AIR_PAXPF=[190,180,211,226,217,217,218,217,194,221,192,210,202,207,212,221,227,231,204,200,197,203,196,178];
-let airKey='', airCache={}, airLog=[], airTerm='T1', airPend=null;
+let airKey='', airCache={}, airLog=[], airTerm='T1', airPend=null, apFix={};
 const KEY_AIRK='gongcha:airkey', KEY_AIRLOG='gongcha:airlog';
 
 function airDist(t){ if(!pos) return 999;
  const a=AIRPORTS[t]; return dist(pos.la,pos.lo,a.la,a.lo); }
-function nearAirport(){                    // 공항권이면 'T1'/'T2', 아니면 null
+/* 김포 청사 좌표를 현장에서 보정한다 */
+async function apCalibrate(term){
+ if(!pos){ alert('위치를 확인할 수 없습니다.'); return false; }
+ if(!confirm(`${AIRPORTS[term].full} 위치를 지금 자리로 저장할까요?`)) return false;
+ AIRPORTS[term].la=pos.la; AIRPORTS[term].lo=pos.lo;
+ apFix[term]={la:pos.la,lo:pos.lo};
+ await Store.set(KEY_APFIX,apFix); renderAir(); return true;
+}
+function apApplyFix(){ for(const k in apFix){ if(AIRPORTS[k]&&apFix[k]){
+ AIRPORTS[k].la=apFix[k].la; AIRPORTS[k].lo=apFix[k].lo; } } }
+function nearAirport(){                    // 공항권이면 청사 키, 아니면 null
  if(!pos) return null;
- const d1=airDist('T1'), d2=airDist('T2');
- if(Math.min(d1,d2)>AIR_RADIUS) return null;
- return d1<=d2?'T1':'T2'; }
+ let best=null,bd=1e9;
+ for(const k in AIRPORTS){ const d=airDist(k); if(d<bd){bd=d;best=k;} }
+ return bd<=AIR_RADIUS ? best : null; }
 function destIsAirport(){                  // 목적지가 공항인지
  if(!dest||dest.la==null) return null;
- const d1=dist(dest.la,dest.lo,AIRPORTS.T1.la,AIRPORTS.T1.lo);
- const d2=dist(dest.la,dest.lo,AIRPORTS.T2.la,AIRPORTS.T2.lo);
- if(Math.min(d1,d2)>AIR_RADIUS) return null;
- return d1<=d2?'T1':'T2'; }
+ let best=null,bd=1e9;
+ for(const k in AIRPORTS){ const a=AIRPORTS[k];
+  const d=dist(dest.la,dest.lo,a.la,a.lo); if(d<bd){bd=d;best=k;} }
+ return bd<=AIR_RADIUS ? best : null; }
 function airMode(){ return destIsAirport()||nearAirport(); }
+
+/* ═══════════ 김포공항 · 한국공항공사(KAC) API (v31) ═══════════
+   인천은 인천국제공항공사(B551177), 김포는 한국공항공사(B551178).
+   기관만 다르고 공공데이터포털 인증키는 같은 것을 쓴다.
+   아래 주소·파라미터·응답 항목은 모두 공식 OpenAPI 활용가이드에 적힌 그대로다. */
+
+const KAC_BASE='https://apis.data.go.kr/B551178/';
+const TAGO_BASE='https://apis.data.go.kr/1613000/DmstcFlightNvgInfo/';
+const GMP='GMP';
+const KAC_KIND=[
+ {k:'arrival',n:'도착편',      hint:'실시간 항공기 운항정보 조회 · 도착 (D-3~D+6)',
+  def:KAC_BASE+'flight-status/arrival'},
+ {k:'depart', n:'출발편',      hint:'실시간 항공기 운항정보 조회 · 출발',
+  def:KAC_BASE+'flight-status/depart'},
+ {k:'aircraft',n:'기종·등록번호',hint:'전국공항 실시간 항공기 기종 및 등록번호 정보',
+  def:KAC_BASE+'flight-aircraft-status/info'},
+ {k:'apron',  n:'주기장·게이트',hint:'김포공항 실시간 주기장 현황정보',
+  def:KAC_BASE+'flight-apron-status/gmp'},
+ {k:'taxfree',n:'면세점용 실시간',hint:'면세점용 여객기 실시간 운항조회',
+  def:KAC_BASE+'flight-status/taxfree'},
+ {k:'schInt', n:'국제선 스케줄', hint:'항공기 운항 스케줄 · 국제선',
+  def:KAC_BASE+'flight-schedule/int'},
+ {k:'schDom', n:'국내선 스케줄', hint:'항공기 운항 스케줄 · 국내선',
+  def:KAC_BASE+'flight-schedule/dom'},
+ {k:'tago',   n:'국내항공운항정보',hint:'국토교통부 TAGO · 운임 포함',
+  def:TAGO_BASE+'GetFlightOpratInfoList'}];
+const KAC_DEF={}; KAC_KIND.forEach(K=>{ if(K.def) KAC_DEF[K.k]=K.def; });
+let kacUrl={}, kacDiag={};
+const KEY_KACURL='gongcha:kacurl';
+const kacAddr=k=> kacUrl[k] || KAC_DEF[k] || null;
+
+/* 가이드에 적힌 요청 변수 이름이 서비스마다 다르다. 종류별로 맞춰 만든다. */
+function kacParams(kind,o){
+ const {ymd,from,to,intl,flight}=o||{};
+ const line=intl?'I':'D';
+ switch(kind){
+  case 'arrival': case 'depart': case 'taxfree':
+   return {pageNo:1,numOfRows:300,searchday:ymd,from_time:from,to_time:to,
+           airport_code:GMP,line,type:'json'};
+  case 'aircraft':
+   return {pageNo:1,numOfRows:300,schAirCode:GMP,Line:line,
+           schStTime:ymd&&from?ymd+from:undefined,schEdTime:ymd&&to?ymd+to:undefined,
+           schFln:flight,type:'json'};
+  case 'apron':
+   return {pageNo:1,numOfRows:300,flightdate:ymd,airport:GMP,
+           line:intl?'국제':'국내',io:'I',type:'json'};
+  case 'schInt': case 'schDom':
+   return {pageNo:1,numOfRows:300,schDate:ymd,schArrvCityCode:GMP,type:'json'};
+  case 'tago':
+   return {pageNo:1,numOfRows:100,_type:'json'};
+  default:
+   return {pageNo:1,numOfRows:100,type:'json'};
+ }
+}
+function kacBuild(raw,params){
+ if(!raw) return null;
+ let u=String(raw).trim();
+ if(!/^https?:\/\//i.test(u)) return null;
+ u=u.replace(/^http:\/\//i,'https://');            // https 페이지에서는 http 호출이 막힌다
+ const [base,qs]=u.split('?');
+ const q=new URLSearchParams(qs||'');
+ if(!q.get('serviceKey')&&!q.get('ServiceKey')){ if(airKey) q.set('serviceKey',airKey); }
+ for(const k in (params||{})) if(params[k]!=null&&params[k]!=='') q.set(k,params[k]);
+ if(!q.get('type')&&!q.get('_type')) q.set('type','json');   // 기본값이 XML 이라 반드시 지정
+ return base+'?'+q.toString();
+}
+async function kacFetch(kind,opt){
+ const raw=kacAddr(kind);
+ if(!raw) throw new Error('주소 미설정');
+ if(!airKey) throw new Error('키없음');
+ const url=kacBuild(raw,kacParams(kind,opt));
+ if(!url) throw new Error('주소 형식 오류');
+ const t0=Date.now();
+ let r,txt;
+ try{ r=await fetch(url); txt=await r.text(); }
+ catch(e){ kacDiag[kind]={ok:false,msg:'연결 차단(CORS 또는 네트워크)',ms:Date.now()-t0}; throw new Error('연결 차단'); }
+ let j=null; try{ j=JSON.parse(txt); }catch(e){}
+ if(!j){
+  const rows=kacParseXml(txt);
+  if(rows.length){ kacDiag[kind]={ok:true,msg:'XML 응답',n:rows.length,ms:Date.now()-t0,sample:rows[0]}; return rows; }
+  kacDiag[kind]={ok:false,msg:'형식 오류: '+txt.slice(0,70),ms:Date.now()-t0};
+  throw new Error('형식 오류');
+ }
+ const code=airDeep(j,'resultCode'), msg=airDeep(j,'resultMsg')||airDeep(j,'returnAuthMsg');
+ if(code!=null&&!(code==='00'||code===0||code==='0')){
+  kacDiag[kind]={ok:false,msg:'거부: '+(msg||code),ms:Date.now()-t0}; throw new Error(msg||'거부'); }
+ const rows=airItems(j);
+ kacDiag[kind]={ok:true,msg:'정상',n:rows.length,ms:Date.now()-t0,sample:rows[0]||null};
+ return rows;
+}
+function kacParseXml(t){
+ try{
+  const d=new DOMParser().parseFromString(t,'text/xml');
+  return [...d.getElementsByTagName('item')].map(it=>{ const o={};
+   [...it.children].forEach(c=>o[c.tagName]=c.textContent); return o; });
+ }catch(e){ return []; }
+}
+
+/* 항목 이름이 서비스마다 다르다 — 가이드에 적힌 이름을 모두 후보로 둔다 */
+const pick=(o,...keys)=>{
+ if(!o) return null;
+ for(const k of keys){ if(o[k]!=null&&o[k]!=='') return o[k]; }
+ const low={}; for(const p in o) low[p.toLowerCase()]=o[p];
+ for(const k of keys){ const v=low[String(k).toLowerCase()]; if(v!=null&&v!=='') return v; }
+ return null; };
+function kacTime(s){                      // '202608150525' · '0525' 둘 다 온다
+ if(!s) return null;
+ const d=String(s).replace(/[^0-9]/g,'');
+ if(d.length>=12) return d.slice(8,12);
+ if(d.length===4) return d;
+ if(d.length===6) return d.slice(0,4);
+ return null;
+}
+const hhmmNum=s=>{ const d=String(s||'').replace(/[^0-9]/g,'');
+ return d.length>=4 ? (+d.slice(0,2))*60+(+d.slice(2,4)) : null; };
+function kacNorm(r){
+ const io=String(pick(r,'io','ioType')||'').trim();
+ const line=String(pick(r,'line','lineCode','Line')||'');
+ const est=String(pick(r,'estimateddatetime','etd')||'');
+ const sch=String(pick(r,'scheduledatetime','std')||'');
+ return {
+  fid:     pick(r,'fid','ufid'),
+  flight:  pick(r,'flightid','airFln','airfln','vihicleId','internationalNum','domesticNum'),
+  airline: pick(r,'airline','airlineKorean','airlineNm'),
+  from:    pick(r,'depAirport','boardingKor','depAirportNm','startcity'),
+  fromCode:pick(r,'depAirportCode','city','startcityCode'),
+  to:      pick(r,'arrAirport','arrivedKor','arrAirportNm','arrivalcity'),
+  toCode:  pick(r,'arrAirportCode','airport','arrivalcityCode'),
+  time:    kacTime(est)||kacTime(sch),
+  sched:   kacTime(sch),
+  raw:     est||sch,
+  type:    pick(r,'icaoApmCd','aircraftType','acftType'),
+  reg:     pick(r,'aplRegNo','regno'),
+  gate:    pick(r,'gate'),
+  bag:     pick(r,'baggageClaim'),
+  status:  pick(r,'rmkKor','rmkEng','remark'),
+  share:   /^Y$/i.test(String(pick(r,'codeshare','cdsrYn')||'')),
+  master:  pick(r,'masterflightid'),
+  // 도착/출발: 'I'/'O' 또는 '도착'/'출발'
+  arrival: !io ? null : (/도착|^I/i.test(io) ? true : (/출발|^O/i.test(io) ? false : null)),
+  intl:    /국제|^I$/i.test(line),
+  dom:     /국내|^D$/i.test(line)
+ };
+}
+
+/* ── 기종 → 좌석 수 → 편당 승객 ──
+   한국공항공사는 시간대별 여객 수 통계를 주지 않는다. 기종 좌석 수로 추정한다.
+   기종 코드는 ICAO(B38M, A21N)와 IATA(738, 321) 두 표기가 모두 올 수 있다. */
+const SEATS=[
+ [/^(A?38|38[0-9]|A380)/i,450],
+ [/^(B?74|747|B74[0-9])/i,360],
+ [/^(B?77W|B?773|77W|773)/i,340],
+ [/^(B?77|772|77L|B772)/i,290],
+ [/^(B?789|789|B?78[0-9]|787|788|78[0-9])/i,270],
+ [/^(A?35|359|351|A35[0-9])/i,300],
+ [/^(A?333|333|A?332|332|A33[0-9]|33[0-9])/i,270],
+ [/^(A?31|310|A310)/i,240],
+ [/^(A?321|321|A21N|32[12]N)/i,200],
+ [/^(B?38M|B?39M|B?73[5-9]|73[5-9]|B737|7M8|73H|73J)/i,180],
+ [/^(A?320|320|A20N|A?319|319|32[0-9]|A32[0-9])/i,170],
+ [/^(E19|E190|E195|190|195|EMB)/i,100],
+ [/^(CRJ9|CR9|CRJ)/i,88],
+ [/^(DH8|DHC|AT7|AT4|SF3|BE[0-9])/i,74]];
+function seatsOf(t){
+ const s=String(t||'').trim(); if(!s) return null;
+ for(const [re,n] of SEATS) if(re.test(s)) return n;
+ return null;
+}
+const LOAD_DOM=0.84, LOAD_INT=0.80, SEAT_DEF_DOM=170, SEAT_DEF_INT=200;
+function paxOfFlights(rows,intl){
+ let pax=0, known=0;
+ for(const r of rows){
+  const s=seatsOf(r.type);
+  if(s){known++; pax+=s;} else pax+=(intl?SEAT_DEF_INT:SEAT_DEF_DOM);
+ }
+ return {pax:Math.round(pax*(intl?LOAD_INT:LOAD_DOM)), known, n:rows.length};
+}
+
+const kacYMD=d=>{const t=d||new Date();
+ return t.getFullYear()+String(t.getMonth()+1).padStart(2,'0')+String(t.getDate()).padStart(2,'0');};
+
+/* ── 김포 도착편 ──
+   1순위 도착편 API(코드쉐어 표시가 있어 중복을 걸러낼 수 있다),
+   막히면 주기장(게이트까지 나온다) → 면세점용 순으로 시도한다. */
+async function gmpArrivals(term,at){
+ const t=at||new Date();
+ const intl=AIRPORTS[term].intl;
+ const ck='gmp|'+term+'|'+Math.floor(t.getTime()/300000);
+ const c=airCache[ck]; if(c) return c.v;
+ const ymd=kacYMD(t);
+ const opt={ymd,from:'0000',to:'2359',intl};
+ let rows=null, used=null, lastErr=null;
+ for(const k of ['arrival','apron','taxfree','aircraft']){
+  if(!kacAddr(k)) continue;
+  try{ rows=(await kacFetch(k,opt)).map(kacNorm); used=k; break; }
+  catch(e){ lastErr=e.message; }
+ }
+ if(!rows) throw new Error(lastErr||'주소 미설정');
+ let v=rows.filter(r=>r.arrival!==false);
+ // 전국 공항이 섞여 오므로 김포 도착만 남긴다
+ if(v.some(r=>r.toCode||r.to))
+   v=v.filter(r=>!(r.toCode||r.to) || /GMP/i.test(r.toCode||'') || /김포/.test(r.to||''));
+ if(v.some(r=>r.intl||r.dom)) v=v.filter(r=>intl?r.intl:r.dom);
+ v=v.filter(r=>!r.share);                                  // 코드쉐어 중복 제거
+ v=v.filter(r=>!/결항|취소|회항|CANCEL|DIVERT/i.test(r.status||''));
+ v.sort((a,b)=>(hhmmNum(a.time)??0)-(hhmmNum(b.time)??0));
+ const out={rows:v,src:used};
+ airCache[ck]={t:Date.now(),v:out}; return out;
+}
+/* 도착편에는 기종이 없다. 기종 API 로 편명→기종·게이트를 채운다 */
+async function gmpEnrich(list,intl,t){
+ if(!list.length||!kacAddr('aircraft')) return;
+ const ck='gmpac|'+kacYMD(t)+'|'+(intl?'I':'D');
+ let m=airCache[ck]&&airCache[ck].v;
+ if(!m){
+  m={};
+  try{
+   const rows=(await kacFetch('aircraft',{ymd:kacYMD(t),intl})).map(kacNorm);
+   rows.forEach(r=>{ if(r.flight) m[String(r.flight).toUpperCase()]={type:r.type,gate:r.gate,reg:r.reg}; });
+  }catch(e){}
+  airCache[ck]={t:Date.now(),v:m};
+ }
+ list.forEach(r=>{ const a=r.flight&&m[String(r.flight).toUpperCase()];
+  if(a){ if(!r.type)r.type=a.type; if(!r.gate)r.gate=a.gate; if(!r.reg)r.reg=a.reg; } });
+}
+async function gmpPredict(term,at){
+ const t=at||new Date();
+ const intl=AIRPORTS[term].intl;
+ const out={term,hour:t.getHours(),flights:0,pax:0,curve:null,dayCurve:null,
+            wait:null,waitN:0,congest:null,err:null,live:false,gmp:true,intl};
+ try{
+  const {rows,src}=await gmpArrivals(term,t);
+  out.src=src; out.total=rows.length;
+  const cnt=new Array(24).fill(0);
+  rows.forEach(r=>{ const m=hhmmNum(r.time); if(m!=null) cnt[Math.floor(m/60)%24]++; });
+  const mx=Math.max.apply(null,cnt)||1;
+  out.dayCount=cnt; out.dayCurve=cnt.map(v=>Math.round(v/mx*100));
+  out.curve=out.dayCurve[t.getHours()]; out.live=true;
+  const a=(t.getHours()*60+t.getMinutes())-40, b=a+80;
+  const near=rows.filter(r=>{ const m=hhmmNum(r.time); return m!=null&&m>=a&&m<=b; });
+  if(near.some(r=>!r.type)) await gmpEnrich(near,intl,t);
+  out.flights=near.length;
+  const P=paxOfFlights(near,intl);
+  out.pax=P.pax; out.paxKnown=P.known;
+  out.top=near.slice(0,8).map(r=>({airline:r.airline,flightId:r.flight,airport:r.from,
+    estimatedDateTime:r.raw,remark:r.status,gatenumber:r.gate,aircraft:r.type}));
+ }catch(e){ out.err=e.message; }
+ const st=airWaitStat(term,t.getHours());
+ if(st){ out.wait=st.mean; out.waitN=st.n; }
+ return out;
+}
+function airPredictAny(term,at){
+ return AIRPORTS[term].ap==='GMP' ? gmpPredict(term,at) : airPredict(term,at);
+}
+/* ── 진단 ── */
+async function kacProbe(){
+ const out=[]; const ymd=kacYMD();
+ for(const K of KAC_KIND){
+  if(!kacAddr(K.k)){ out.push({...K,state:'미설정'}); continue; }
+  try{ const rows=await kacFetch(K.k,{ymd,from:'0000',to:'2359',intl:false});
+       out.push({...K,state:'정상',cnt:rows.length,sample:rows[0]||null}); }
+  catch(e){ out.push({...K,state:'실패',msg:(kacDiag[K.k]||{}).msg||e.message}); }
+ }
+ return out;
+}
+function kacDiagDraw(list){
+ const box=document.getElementById('air_diag'); if(!box) return;
+ if(!list){ box.innerHTML='<div class="mt" style="color:var(--faint);font-size:11px">「API 진단」을 누르면 8종이 실제로 열리는지 확인합니다.</div>'; return; }
+ box.innerHTML=list.map(x=>{
+  const col=x.state==='정상'?'var(--occ)':x.state==='미설정'?'var(--faint)':'var(--vac)';
+  const keys=x.sample?Object.keys(x.sample).slice(0,10).join(', '):'';
+  return `<div class="shrow"><span>${x.n} · ${x.hint}</span>
+   <b class="mono" style="color:${col}">${x.state}${x.cnt!=null?' '+x.cnt+'건':''}</b></div>`+
+   (x.msg?`<div class="mt" style="color:var(--vac);font-size:10px;margin:-2px 0 6px">${x.msg}</div>`:'')+
+   (keys?`<div class="mt" style="color:var(--faint);font-size:10px;margin:-2px 0 6px">항목: ${keys}</div>`:'');
+ }).join('');
+}
 
 const AIR_BASE='https://apis.data.go.kr/B551177/';
 async function airFetch(path,params){
@@ -4712,7 +5016,7 @@ async function airCompare(){
  const a=new Date(t.getTime()-40*60000), b=new Date(t.getTime()+40*60000);
  const out={};
  let sch=null; try{ sch=await airDaySchedule(airYMD(t)); }catch(e){}
- for(const tm of ['T1','T2']){
+ for(const tm of Object.keys(AIRPORTS).filter(k=>AIRPORTS[k].ap==='INC')){
   const o={term:tm,flights:0,pax:0,kor:0,fgn:0,day:null,err:null};
   try{ const fl=await airArrivals(tm,hhmm(a),hhmm(b));
        o.flights=fl.length;
@@ -4737,6 +5041,7 @@ function airPickTerminal(c){
 function airRenderCompare(c){
  const box=document.getElementById('air_cmp'); if(!box) return;
  const p=airPickTerminal(c);
+ const KS=Object.keys(c);
  const row=tm=>{ const o=c[tm]||{}; const tot=(o.kor||0)+(o.fgn||0);
   const ks=tot>0?Math.round(o.kor/tot*100):null;
   const win=p.pick===tm&&!p.close;
@@ -4745,16 +5050,21 @@ function airRenderCompare(c){
    <div class="body">
      <div class="nm">${AIRPORTS[tm].n}${win?' <span style="color:var(--occ);font-size:11px">추천</span>':''}</div>
      <div class="meta mono">±40분 <b>${o.flights||0}편</b> · 추정 <b>${(o.pax||0).toLocaleString()}명</b></div>
-     <div class="meta mono">심사대기 내국인 <b style="color:var(--occ)">${(o.kor||0).toLocaleString()}</b>`+
-     ` · 외국인 ${(o.fgn||0).toLocaleString()}${ks!=null?` · 내국인 <b>${ks}%</b>`:''}</div>
+     ${AIRPORTS[tm].ap==='GMP'?`<div class="meta mono">${o.err?'<span style="color:var(--vac)">'+o.err+'</span>':'기종 기준 추정'}</div>`
+       :`<div class="meta mono">심사대기 내국인 <b style="color:var(--occ)">${(o.kor||0).toLocaleString()}</b>`+
+     ` · 외국인 ${(o.fgn||0).toLocaleString()}${ks!=null?` · 내국인 <b>${ks}%</b>`:''}</div>`}
    </div></div>`; };
+ const gmp=p.pick&&AIRPORTS[p.pick]&&AIRPORTS[p.pick].ap==='GMP';
  let tip;
- if(p.close) tip=`두 터미널이 비슷합니다. <b>중간 대기</b>도 방법입니다 — 콜이 뜨는 쪽으로 5분 내 이동할 수 있습니다.`;
- else tip=`<b>${AIRPORTS[p.pick].n}</b> 쪽 수요가 뚜렷합니다. 터미널 간 이동은 차로 약 15분이니 미리 자리를 잡으세요.`;
- box.innerHTML=row('T1')+row('T2')+
-  `<div class="note2" style="margin-top:8px">${tip}<br>`+
-  `<span style="color:var(--faint)">T2는 대한항공·아시아나·진에어·에어부산·에어서울 등 국적사 중심이라 내국인 비중이 높습니다. `+
-  `T1은 외항사와 LCC 중심입니다.</span></div>`;
+ if(p.close) tip=`두 청사가 비슷합니다. <b>중간 대기</b>도 방법입니다 — 콜이 뜨는 쪽으로 ${gmp?'2~3':'5'}분 내 이동할 수 있습니다.`;
+ else tip=`<b>${AIRPORTS[p.pick].n}</b> 쪽 수요가 뚜렷합니다. 청사 간 이동은 차로 약 ${gmp?'5':'15'}분이니 미리 자리를 잡으세요.`;
+ const note = gmp
+  ? `<span style="color:var(--faint)">김포 국제선은 도쿄(하네다)·오사카·타이베이·베이징 등 단거리 노선이라 도착이 몰리는 시간대가 뚜렷합니다. `+
+    `국내선은 제주 노선이 편수를 좌우합니다. 승객 수는 편당 기종 좌석 수로 추정한 값입니다.</span>`
+  : `<span style="color:var(--faint)">T2는 대한항공·아시아나·진에어·에어부산·에어서울 등 국적사 중심이라 내국인 비중이 높습니다. `+
+    `T1은 외항사와 LCC 중심입니다.</span>`;
+ box.innerHTML=KS.map(row).join('')+
+  `<div class="note2" style="margin-top:8px">${tip}<br>${note}</div>`;
 }
 
 /* ── 공항 탭 렌더 ── */
@@ -4786,22 +5096,71 @@ function airLogDraw(){
   `<div class="pick"><div class="body"><div class="nm">${x.term} · ${String(x.h).padStart(2,'0')}시${x.dest?' → '+x.dest:''}</div>`+
   `<div class="meta mono">대기 ${x.wait}분${x.fare?' · '+(+x.fare).toLocaleString()+'원':''} · ${x.date||''}</div></div></div>`).join('');
 }
+
+/* ── 공항 탭: 공항·청사 선택, 주소 입력, 진단 ── */
+let airAp='INC';
+function airTermButtons(){
+ const box=document.getElementById('air_term'); if(!box) return;
+ const ks=Object.keys(AIRPORTS).filter(k=>AIRPORTS[k].ap===airAp);
+ if(!ks.includes(airTerm)) airTerm=ks[0];
+ box.innerHTML=ks.map(k=>`<button data-tm="${k}" class="${k===airTerm?'on':''}">${AIRPORTS[k].n}</button>`).join('');
+ document.querySelectorAll('#air_ap button').forEach(b=>b.className=(b.dataset.ap===airAp?'on':''));
+ const cal=document.getElementById('air_cal');
+ if(cal){ cal.hidden=(airAp!=='GMP'); cal.onclick=()=>apCalibrate(airTerm); }
+}
+function airUrlDraw(){
+ const box=document.getElementById('air_urls'); if(!box) return;
+ box.innerHTML=KAC_KIND.map(K=>
+  `<div class="fr" style="align-items:flex-start"><label style="width:84px">${K.n}</label>
+    <input data-ku="${K.k}" placeholder="${K.def?'기본값 사용 중':'요청주소 붙여넣기'}"
+      value="${(kacUrl[K.k]||'').replace(/"/g,'&quot;')}"></div>`+
+  `<div class="mt" style="color:var(--faint);font-size:9.5px;margin:-4px 0 6px 84px">${K.def||K.hint}</div>`).join('');
+ box.querySelectorAll('[data-ku]').forEach(el=>el.onchange=async()=>{
+  const k=el.dataset.ku, v=el.value.trim();
+  if(v) kacUrl[k]=v; else delete kacUrl[k];
+  await Store.set(KEY_KACURL,kacUrl);
+  el.style.borderColor=v&&!kacBuild(v)?'var(--vac)':'';
+ });
+}
+function initAirAp(){
+ document.querySelectorAll('#air_ap button').forEach(b=>b.onclick=()=>{
+  airAp=b.dataset.ap; airTermButtons(); renderAir(); });
+ const p=document.getElementById('air_probe');
+ if(p) p.onclick=async()=>{ p.textContent='확인 중…'; p.disabled=true;
+  try{ kacDiagDraw(await kacProbe()); } finally { p.textContent='API 진단'; p.disabled=false; } };
+ airTermButtons(); airUrlDraw(); kacDiagDraw(null);
+}
 async function renderAir(){
- airCurveDraw(); airLogDraw();
- document.querySelectorAll('#air_term button').forEach(b=>
-   b.className=(b.dataset.tm===airTerm?'on':''));
+ airCurveDraw(); airLogDraw(); airTermButtons();
  const d=airDist(airTerm);
  document.getElementById('air_dist').textContent=pos?(d<900?d.toFixed(0)+'km':''):'';
  const wa=airWaitAll(airTerm);
  document.getElementById('air_w').textContent=wa?wa.mean.toFixed(0)+'분':'-';
+ const A=AIRPORTS[airTerm], apn=AP_NAME[A.ap];
  if(!airKey){
   airSetVerdict('na','인증키가 없습니다',
-   '설정 → 공공데이터 인증키에 키를 넣으면 실시간 도착편과 입국장 혼잡도를 불러옵니다.');
+   '설정 → 공공데이터 인증키에 키를 넣으면 실시간 도착편을 불러옵니다.');
   return; }
- airSetVerdict('','조회 중…','인천공항 도착편을 확인하고 있습니다.');
- const r=await airPredict(airTerm);
+ if(A.ap==='GMP'&&!kacAddr('arrival')&&!kacAddr('apron')&&!kacAddr('taxfree')){
+  airSetVerdict('na','김포 API 주소가 없습니다',
+   '아래 「한국공항공사 API」에 공공데이터포털의 요청주소를 붙여넣으면 도착편을 불러옵니다. 주소가 없어도 대기시간 기록과 귀로 안내는 됩니다.');
+  return; }
+ airSetVerdict('','조회 중…',apn+' 도착편을 확인하고 있습니다.');
+ const r=await airPredictAny(airTerm);
  airRenderResult(r);
- try{ airRenderCompare(await airCompare()); }catch(e){}
+ if(A.ap==='INC'){ try{ airRenderCompare(await airCompare()); }catch(e){} }
+ else { try{ airRenderCompare(await gmpCompare()); }catch(e){} }
+}
+/* 김포 국내선·국제선 비교 */
+async function gmpCompare(){
+ const out={};
+ for(const tm of Object.keys(AIRPORTS).filter(k=>AIRPORTS[k].ap==='GMP')){
+  const o={term:tm,flights:0,pax:0,kor:0,fgn:0,day:null,err:null};
+  try{ const r=await gmpPredict(tm); o.flights=r.flights; o.pax=r.pax; o.day=r.dayCount; o.err=r.err; }
+  catch(e){ o.err=e.message; }
+  out[tm]=o;
+ }
+ return out;
 }
 function airRenderResult(r){
  document.getElementById('air_f').textContent=r.flights?r.flights+'편':'-';
@@ -5196,6 +5555,9 @@ document.getElementById('clr').onclick=async()=>{
  try{drawTags();}catch(e){console.warn('drawTags 건너뜀',e.message);}
  try{ airKey=(await Store.get(KEY_AIRK))||''; airLog=(await Store.get(KEY_AIRLOG))||[];
       const _ak=document.getElementById('airkey'); if(_ak) _ak.value=airKey;
+      kacUrl=(await Store.get(KEY_KACURL))||{};
+      apFix=(await Store.get(KEY_APFIX))||{}; apApplyFix();
+      initAirAp();
  }catch(e){ console.warn('공항 설정 로드 실패',e.message); }
  // ── 콜 수락 버튼 ──
  const cb=document.getElementById('callbtn');
