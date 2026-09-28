@@ -965,12 +965,12 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   </section>
 
   <section style="padding-top:0">
-    <div class="eyebrow"><span>한국공항공사 API</span><span><button id="air_probe">API 진단</button>
+    <div class="eyebrow"><span>API 진단 (인천 · 김포)</span><span><button id="air_probe">API 진단</button>
       <button id="air_copy" hidden>진단 복사</button></span></div>
     <textarea id="air_diagtext" hidden readonly rows="8"
       style="width:100%;font-size:10px;line-height:1.45;margin:6px 0 4px"></textarea>
     <div class="mt" style="color:var(--dim);font-size:10.5px;margin-bottom:8px">
-      8종 주소가 이미 들어 있습니다. <b>「API 진단」만 누르면</b> 어느 서비스가 열리는지 바로 나옵니다.
+      <b>「API 진단」</b>을 누르면 인천 3종과 김포 10종이 실제로 열리는지, 서버가 뭐라고 답하는지 그대로 나옵니다.
       아래 칸은 포털 주소가 바뀌었을 때만 쓰세요. 인증키는 자동으로 붙습니다.</div>
     <div id="air_diag" style="margin-bottom:10px"></div>
     <div id="air_urls"></div>
@@ -4940,8 +4940,26 @@ function airPredictAny(term,at){
  return AIRPORTS[term].ap==='GMP' ? gmpPredict(term,at) : airPredict(term,at);
 }
 /* ── 진단 ── */
+const INC_PROBE=[
+ {k:'inc_arr', n:'인천 도착편', hint:'인천국제공항공사 · 여객기 도착',
+  path:'StatusOfPassengerFlightsOdp/getPassengerArrivalsOdp',
+  par:{numOfRows:10,pageNo:1,lang:'K',from_time:'0000',to_time:'2359'}},
+ {k:'inc_cong',n:'인천 입국장', hint:'입국심사 대기 인원',
+  path:'StatusOfArrivals/getArrivalsCongestion',
+  par:{numOfRows:10,pageNo:1,terno:'T1'}},
+ {k:'inc_stat',n:'인천 시간대통계',hint:'시간대별 여객 통계',
+  path:'AviationStatsByTimeline/getAviationStatsByTimelineList',
+  par:{numOfRows:10,pageNo:1}}];
 async function kacProbe(){
  const out=[]; const ymd=kacYMD();
+ for(const K of INC_PROBE){                       // 인천도 같은 화면에서 본다
+  const dk='인천:'+K.path.split('/').pop();
+  try{ const rows=await airFetch(K.path,K.par); const D=kacDiag[dk]||{};
+       out.push({...K,state:'정상',cnt:rows.length,sample:rows[0]||null,
+                 peek:D.peek,url:D.url,total:D.total,note:rows.length?'':D.msg}); }
+  catch(e){ const D=kacDiag[dk]||{};
+       out.push({...K,state:'실패',msg:D.msg||e.message,peek:D.peek,url:D.url}); }
+ }
  for(const K of KAC_KIND){
   if(!kacAddr(K.k)){ out.push({...K,state:'미설정'}); continue; }
   try{ const rows=await kacFetch(K.k,{ymd,from:'0000',to:'2359',intl:false});
@@ -5013,11 +5031,26 @@ async function airFetch(path,params){
  if(!airKey) throw new Error('키없음');
  const q=Object.keys(params).map(k=>k+'='+encodeURIComponent(params[k])).join('&');
  const url=AIR_BASE+path+'?'+q+'&serviceKey='+keyParam(airKey)+'&type=json';
- const r=await fetch(url); const t=await r.text();
- let j; try{ j=JSON.parse(t); }catch(e){ throw new Error('형식오류'); }
+ const dk='인천:'+path.split('/').pop();
+ const shown=url.replace(/serviceKey=[^&]*/,'serviceKey=●●●');
+ const t0=Date.now();
+ let r,t;
+ try{ r=await fetch(url); t=await r.text(); }
+ catch(e){ kacDiag[dk]={ok:false,msg:'연결 차단(CORS 또는 네트워크)',url:shown,ms:Date.now()-t0};
+           throw new Error('연결 차단(CORS 또는 네트워크)'); }
+ const peek=String(t||'').replace(/\s+/g,' ').slice(0,300);
+ let j; try{ j=JSON.parse(t); }
+ catch(e){ kacDiag[dk]={ok:false,msg:'형식 오류(JSON 아님)',url:shown,peek,ms:Date.now()-t0};
+           throw new Error('형식 오류 — '+peek.slice(0,60)); }
  const code=airDeep(j,'resultCode');
- if(!(code==='00'||code===0||code==='0')) throw new Error(airDeep(j,'resultMsg')||'거부');
- return airItems(j); }
+ if(!(code==='00'||code===0||code==='0')){
+  const m=airDeep(j,'resultMsg')||airDeep(j,'returnAuthMsg')||('코드 '+code);
+  kacDiag[dk]={ok:false,msg:'거부: '+m,url:shown,peek,ms:Date.now()-t0};
+  throw new Error(m); }
+ const rows=airItems(j);
+ kacDiag[dk]={ok:true,msg:rows.length?'정상':'응답은 왔지만 목록이 비어 있음',
+   n:rows.length,total:airDeep(j,'totalCount'),url:shown,peek,sample:rows[0]||null,ms:Date.now()-t0};
+ return rows; }
 function airDeep(o,k){ if(!o||typeof o!=='object')return null;
  if(o[k]!=null)return o[k];
  for(const p in o){const r=airDeep(o[p],k); if(r!=null)return r;} return null; }
@@ -5337,7 +5370,9 @@ function airRenderResult(r){
  // 판단
  const idx=r.curve, fl=r.flights;
  let cls,call,why;
- if(r.err&&!fl){ cls='na'; call='조회 실패'; why=r.err+' — 활용신청과 인증키를 확인하세요.'; }
+ if(r.err&&!fl){ cls='na'; call='조회 실패';
+   why='서버가 말한 사유: <b>'+String(r.err).slice(0,120)+'</b>'+
+       '<br><span style="font-size:10.5px;color:var(--faint)">아래 「API 진단」을 누르면 인천·김포 13종의 응답 원문까지 보입니다.</span>'; }
  else if(!fl&&r.total===0){ cls='na'; call='도착편을 못 받았습니다';
    const st=r.step?Object.keys(r.step).map(k=>k+' '+r.step[k]).join(' → '):'';
    why=(r.step&&r.step['받음']>0
