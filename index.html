@@ -4943,7 +4943,7 @@ function airPredictAny(term,at){
 const INC_PROBE=[
  {k:'inc_arr', n:'인천 도착편', hint:'인천국제공항공사 · 여객기 도착',
   path:'StatusOfPassengerFlightsOdp/getPassengerArrivalsOdp',
-  par:{numOfRows:10,pageNo:1,lang:'K',from_time:'0000',to_time:'2359'}},
+  par:{numOfRows:10,pageNo:1,lang:'K'}},
  {k:'inc_cong',n:'인천 입국장', hint:'입국심사 대기 인원',
   path:'StatusOfArrivals/getArrivalsCongestion',
   par:{numOfRows:10,pageNo:1,terno:'T1'}},
@@ -4951,21 +4951,29 @@ const INC_PROBE=[
   path:'AviationStatsByTimeline/getAviationStatsByTimelineList',
   par:{numOfRows:10,pageNo:1}}];
 async function kacProbe(){
- const out=[]; const ymd=kacYMD();
+ const out=[]; const now=new Date(), ymd=kacYMD(now);
+ const m0=now.getHours()*60+now.getMinutes();
+ const cl=m=>Math.max(0,Math.min(1439,m));
+ const hm=m=>String(Math.floor(cl(m)/60)).padStart(2,'0')+String(cl(m)%60).padStart(2,'0');
+ const FROM=hm(m0-150), TO=hm(m0+150);
  for(const K of INC_PROBE){                       // 인천도 같은 화면에서 본다
   const dk='인천:'+K.path.split('/').pop();
-  try{ const rows=await airFetch(K.path,K.par); const D=kacDiag[dk]||{};
+  const par=Object.assign({},K.par);
+  if(K.k==='inc_arr'){ par.from_time=FROM; par.to_time=TO; }
+  try{ const rows=await airFetch(K.path,par); const D=kacDiag[dk]||{};
        out.push({...K,state:'정상',cnt:rows.length,sample:rows[0]||null,
-                 peek:D.peek,url:D.url,total:D.total,note:rows.length?'':D.msg}); }
+                 peek:D.peek,url:D.url,total:D.total,
+                 note:rows.length?'':(D.total>0?'서버는 '+D.total+'건이라는데 목록을 못 꺼냈습니다':D.msg)}); }
   catch(e){ const D=kacDiag[dk]||{};
        out.push({...K,state:'실패',msg:D.msg||e.message,peek:D.peek,url:D.url}); }
  }
  for(const K of KAC_KIND){
   if(!kacAddr(K.k)){ out.push({...K,state:'미설정'}); continue; }
-  try{ const rows=await kacFetch(K.k,{ymd,from:'0000',to:'2359',intl:false});
+  try{ const rows=await kacFetch(K.k,{ymd,from:FROM,to:TO,intl:false});
        const D=kacDiag[K.k]||{};
        out.push({...K,state:'정상',cnt:rows.length,sample:rows[0]||null,
-                 peek:D.peek,url:D.url,total:D.total,note:rows.length?'':D.msg}); }
+                 peek:D.peek,url:D.url,total:D.total,
+                 note:rows.length?'':(D.total>0?'서버는 '+D.total+'건이라는데 목록을 못 꺼냈습니다':D.msg)}); }
   catch(e){ const D=kacDiag[K.k]||{};
        out.push({...K,state:'실패',msg:D.msg||e.message,peek:D.peek,url:D.url}); }
  }
@@ -5000,7 +5008,7 @@ function kacDiagDraw(list){
   const col=x.state==='정상'?'var(--occ)':x.state==='미설정'?'var(--faint)':'var(--vac)';
   const keys=x.sample?Object.keys(x.sample).slice(0,10).join(', '):'';
   return `<div class="shrow"><span>${x.n} · ${x.hint}</span>
-   <b class="mono" style="color:${col}">${x.state}${x.cnt!=null?' '+x.cnt+'건':''}</b></div>`+
+   <b class="mono" style="color:${col}">${x.state}${x.cnt!=null?' '+x.cnt+'건':''}${x.total!=null?' / 전체 '+x.total:''}</b></div>`+
    (x.msg||x.note?`<div class="mt" style="color:var(--vac);font-size:10px;margin:-2px 0 6px">${x.msg||x.note}</div>`:'')+
    (x.url?`<div class="mt mono" style="color:var(--faint);font-size:9px;margin:-2px 0 4px;word-break:break-all">요청: ${String(x.url).replace(/</g,'&lt;')}</div>`:'')+
    (keys?`<div class="mt" style="color:var(--faint);font-size:10px;margin:-2px 0 6px">항목: ${keys}</div>`:'')+
@@ -5054,9 +5062,40 @@ async function airFetch(path,params){
 function airDeep(o,k){ if(!o||typeof o!=='object')return null;
  if(o[k]!=null)return o[k];
  for(const p in o){const r=airDeep(o[p],k); if(r!=null)return r;} return null; }
-function airItems(b){ const it=airDeep(b,'items');
- if(!it)return []; if(Array.isArray(it))return it;
- if(it.item)return Array.isArray(it.item)?it.item:[it.item]; return []; }
+/* 응답에서 목록을 꺼낸다.
+   기관마다 감싸는 모양이 다르다. items / items.item / item / body 바로 아래 배열 …
+   하나라도 못 읽으면 통째로 0건이 되므로, 모양을 가리지 않고 찾는다. */
+function airRowList(x){
+ if(!x) return null;
+ if(Array.isArray(x)) return x.every(e=>e&&typeof e==='object') ? x : null;
+ if(typeof x==='object'){
+  if(x.item!=null) return Array.isArray(x.item)?x.item:[x.item];
+  return null; }
+ return null;
+}
+const ROW_HINT=/^(fid|ufid|flightid|airfln|air_fln|flight_id|internationalnum|domesticnum|vihicleid|airline|airlinekorean|airline_korean|boardingkor|arrivedkor|scheduledatetime|estimateddatetime|std|etd|terminalid|carousel)$/i;
+function airFindRows(o,depth){
+ if(!o||typeof o!=='object'||(depth||0)>6) return null;
+ const direct=airRowList(o); if(direct&&direct.length) return direct;
+ for(const k in o){
+  const v=o[k];
+  if(Array.isArray(v)&&v.length&&v.every(e=>e&&typeof e==='object'&&!Array.isArray(e))){
+   if(v.some(e=>Object.keys(e).some(kk=>ROW_HINT.test(kk)))) return v;
+  }
+ }
+ for(const k in o){
+  if(/^(header|resultcode|resultmsg)$/i.test(k)) continue;
+  const r=airFindRows(o[k],(depth||0)+1); if(r&&r.length) return r;
+ }
+ return null;
+}
+function airItems(b){
+ const it=airDeep(b,'items');
+ let v=airRowList(it); if(v&&v.length) return v;
+ const one=airDeep(b,'item');
+ if(one!=null){ v=airRowList({item:one}); if(v&&v.length) return v; }
+ v=airFindRows(b,0); if(v&&v.length) return v;
+ return Array.isArray(it)?it:[]; }
 
 // 도착편 조회 (코드쉐어 Slave 제외 — 같은 비행기가 중복 계수되는 것을 막는다)
 async function airArrivals(term,fromH,toH){
