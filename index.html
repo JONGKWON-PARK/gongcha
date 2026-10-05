@@ -103,6 +103,21 @@ header .clk{margin-left:auto;font-size:15px}
 .wr.hd{color:var(--faint);font-size:9.5px;letter-spacing:.4px}
 .wr span{width:44px;color:var(--dim)} .wr b{flex:1;text-align:right;font-weight:700}
 .empty{padding:26px 14px;text-align:center;color:var(--faint);font-size:12.5px;line-height:1.7}
+/* 예약(손님) 탭 — 회색 글씨가 안 보여 밝게. 강조색(앰버·빨강·초록)은 유지 */
+#pane-book{color:#fff}
+#pane-book .eyebrow,#pane-book .eyebrow>span{color:#fff}
+#pane-book .bday{color:#f0f0f0}
+#pane-book .bkform label{color:#e2e2e2}
+#pane-book .bk .tm i{color:#e2e2e2}
+#pane-book .bk .rt{color:#fff}
+#pane-book .bk .mt{color:#eaeaea}
+#pane-book .bk .ac button{color:#f2f2f2}
+#pane-book .empty{color:#e2e2e2}
+#pane-book .rank .r i,#pane-book .rank .r em,#pane-book .rank .r span{color:#eaeaea}
+#pane-book #recall_list .r,#pane-book #cust_list .r,#pane-book #recall_list .r span,#pane-book #cust_list .r span{color:#fff}
+/* 인라인으로 지정된 회색(var(--dim)/var(--faint))도 밝게 덮어쓴다 */
+#pane-book [style*="var(--dim)"]{color:#eaeaea !important}
+#pane-book [style*="var(--faint)"]{color:#cfcfcf !important}
 
 /* 세금 */
 .tax .e{display:flex;padding:10px 13px;border-bottom:1px solid var(--line);font-size:12.5px;align-items:center}
@@ -139,6 +154,8 @@ section{padding:15px 16px}
  display:flex;align-items:center;justify-content:space-between}
 .eyebrow button{background:transparent;border:1px solid var(--line);color:var(--amber);
  font-size:10.5px;letter-spacing:0;padding:4px 9px;font-family:inherit;cursor:pointer}
+.eyebrow.book{color:#fff}
+.eyebrow.book span{color:#fff;font-size:15px;font-weight:800;letter-spacing:0}
 
 .recov{border:1px solid var(--line);border-left:3px solid var(--occ);background:var(--panel);
  padding:12px 14px;margin-bottom:9px}
@@ -1046,14 +1063,14 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 
 <div class="pane" id="pane-book">
   <section>
-    <div class="eyebrow"><span>예약 등록</span></div>
+    <div class="eyebrow book"><span>예약 등록</span></div>
     <div class="tools" style="margin-bottom:7px;gap:6px">
-      <button class="opt" id="bk_img" style="flex:1;text-align:center;font-size:13px;padding:9px;border-color:var(--amber);color:var(--amber)">📷 이미지에서 불러오기</button>
-      <button class="opt" id="bk_demo" style="flex:1;text-align:center;font-size:13px;padding:9px">예시 넣어보기</button>
+      <button class="opt" id="bk_img" style="flex:1;text-align:center;font-size:12.5px;padding:9px;border-color:var(--amber);color:var(--amber)">📷 이미지 올리기 or 직접기입</button>
+      <button class="opt" id="bk_email_btn" style="flex:1;text-align:center;font-size:12.5px;padding:9px;border-color:var(--occ);color:var(--occ)">✉ 이메일 복붙 or 직접기입</button>
     </div>
     <input id="bk_file" type="file" accept="image/*" hidden>
     <div id="bk_ocr" hidden style="margin-bottom:7px;font-size:12px;padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--dim)"></div>
-    <textarea id="bk_raw" placeholder="고객 메시지를 붙여넣거나, 위에서 캡처 이미지를 불러오세요&#10;&#10;카카오 예약콜 · 카카오톡 · 문자 · 이메일 어디서든&#10;날짜·시간·출발·도착·인원을 자동으로 찾아냅니다"></textarea>
+    <textarea id="bk_raw" placeholder="이미지를 올리거나, 이메일·문자 내용을 붙여넣거나, 직접 입력하세요&#10;&#10;카카오 예약콜 · 카카오톡 · 문자 · 이메일 어디서든&#10;날짜·시간·출발·도착·인원·이메일을 자동으로 찾아냅니다"></textarea>
     <div class="bkform" id="bk_form" hidden>
       <div class="fr"><label>날짜</label><input id="bk_d" type="date"></div>
       <div class="fr"><label>시각</label><input id="bk_t" type="time"></div>
@@ -1061,6 +1078,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
       <div class="fr"><label>도착</label><input id="bk_to" placeholder="도착지"></div>
       <div class="fr"><label>고객</label><input id="bk_name" placeholder="이름"></div>
       <div class="fr"><label>연락처</label><input id="bk_tel" placeholder="전화·WhatsApp"></div>
+      <div class="fr"><label>이메일주소</label><input id="bk_email" type="email" inputmode="email" autocapitalize="off" placeholder="example@email.com"></div>
       <div class="fr"><label>인원</label><input id="bk_pax" type="number" inputmode="numeric" placeholder="명"></div>
       <div class="fr"><label>짐</label><input id="bk_bag" type="number" inputmode="numeric" placeholder="개"></div>
       <div class="fr"><label>예상 요금</label><input id="bk_fare" type="number" inputmode="numeric" placeholder="원"></div>
@@ -1392,6 +1410,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
     <div class="tglab">언어</div><div class="tg" data-t="lang"></div>
     <div class="tglab">결제</div><div class="tg" data-t="pay"></div>
     <div class="tglab">승객분류</div><div class="tg" data-t="ptype"></div>
+    <div class="tglab">주요 연령대</div><div class="tg" data-t="age"></div>
     <div class="tglab">분위기</div><div class="tg" data-t="mood"></div>
   </div>
   <button class="opt" id="ed_save" style="border-color:var(--amber);color:var(--amber);text-align:center">저장</button>
@@ -1448,6 +1467,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
     <div class="tglab">언어</div><div class="tg" data-t="lang"></div>
     <div class="tglab">결제</div><div class="tg" data-t="pay"></div>
     <div class="tglab">승객분류</div><div class="tg" data-t="ptype"></div>
+    <div class="tglab">주요 연령대</div><div class="tg" data-t="age"></div>
     <div class="tglab">분위기</div><div class="tg" data-t="mood"></div>
   </div>
   <div class="tglab" id="pklab2" hidden>피크 배수 (요금 ÷ 기본요금 · 호출료·할증 반영 배수)</div>
@@ -2448,8 +2468,11 @@ function parseMsg(txt){
  // 이름
  if((m=T.match(/[—\-–]\s*([A-Za-z가-힣]{2,12})\s*$/))) r.name=m[1];
  if(!r.name&&(m=T.match(/([가-힣]{2,4})\s*(?:님|씨)/))) r.name=m[1];
- // 연락처
- if((m=T.match(/(\+?\d[\d\-\s]{7,16}\d)/))) r.tel=m[1].replace(/\s/g,'');
+ // 이메일 (전화번호보다 먼저: 전화 정규식이 이메일 속 숫자를 집지 않도록)
+ if((m=T.match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/))) r.email=m[0].replace(/[.,;)]+$/,'');
+ // 연락처 (이메일 부분은 제외하고 찾는다)
+ const Tt=r.email?T.replace(r.email,' '):T;
+ if((m=Tt.match(/(\+?\d[\d\-\s]{7,16}\d)/))) r.tel=m[1].replace(/\s/g,'');
  // 항공편
  if((m=T.match(/\b([A-Z]{2}\s?\d{2,4})\b/))) r.memo='항공편 '+m[1];
  return r;
@@ -2646,6 +2669,7 @@ function initBook(){
   if(r.name)$('bk_name').value=r.name; if(r.tel)$('bk_tel').value=r.tel;
   if(r.pax)$('bk_pax').value=r.pax; if(r.bag)$('bk_bag').value=r.bag;
   if(r.fare)$('bk_fare').value=r.fare; if(r.peak)$('bk_peak').value=r.peak;
+  if(r.email)$('bk_email').value=r.email;
   if(r.memo)$('bk_memo').value=r.memo;
   else if(r.via)$('bk_memo').value='경유지 '+r.via+'개';
   if(!$('bk_dur').value)$('bk_dur').value=60;
@@ -2653,26 +2677,61 @@ function initBook(){
  ['bk_d','bk_t','bk_from','bk_to','bk_dur'].forEach(i=>$(i).addEventListener('input',liveClash));
  $('bk_cancel').onclick=()=>{$('bk_raw').value='';$('bk_form').hidden=true;editId=null;
   if($('bk_ocr'))$('bk_ocr').hidden=true;
-  ['bk_d','bk_t','bk_from','bk_to','bk_name','bk_tel','bk_pax','bk_bag','bk_fare','bk_peak','bk_memo'].forEach(i=>$(i).value='');};
+  ['bk_d','bk_t','bk_from','bk_to','bk_name','bk_tel','bk_email','bk_pax','bk_bag','bk_fare','bk_peak','bk_memo'].forEach(i=>$(i).value='');};
  $('bk_save').onclick=async()=>{
   if(!$('bk_d').value||!$('bk_t').value){alert('날짜와 시각을 입력해주세요.');return;}
   const b={id:editId||('b'+Date.now()),d:$('bk_d').value,t:$('bk_t').value,
    from:$('bk_from').value.trim(),to:$('bk_to').value.trim(),name:$('bk_name').value.trim(),
-   tel:$('bk_tel').value.trim(),pax:+$('bk_pax').value||0,bag:+$('bk_bag').value||0,
+   tel:$('bk_tel').value.trim(),email:$('bk_email').value.trim(),pax:+$('bk_pax').value||0,bag:+$('bk_bag').value||0,
    dur:+$('bk_dur').value||60,fare:+$('bk_fare').value||0,peak:+$('bk_peak').value||0,memo:$('bk_memo').value.trim()};
   books=books.filter(x=>x.id!==b.id); books.push(b);
   await Store.set(KEY_BOOK,books);
   if(b.name){const k=custKey(b.name,b.tel);
    if(!custs[k])custs[k]={name:b.name,tel:b.tel,n:0,sum:0,last:''};
    custs[k].n++; custs[k].sum+=b.fare||0; custs[k].last=b.d;
+   if(b.email)custs[k].email=b.email;
    await Store.set(KEY_CUST,custs);}
   $('bk_cancel').click(); renderBook();};
- $('bk_demo').onclick=()=>{
-  $('bk_raw').value="Hi! We need pickup on Aug 25 at 7:30am from Lotte Hotel Myeongdong to Incheon T2. 4 adults, 5 large suitcases. Flight KE621. +82 10-1234-5678 — Michael";
-  $('bk_raw').dispatchEvent(new Event('input'));};
- // ─── 이미지에서 불러오기 (OCR 우선, 실패 시 수동) ───
+ // ─── 이메일 복붙 or 직접기입: 입력칸으로 바로 이동·포커스 ───
+ $('bk_email_btn').onclick=()=>{
+  if($('bk_ocr'))$('bk_ocr').hidden=true;
+  const ta=$('bk_raw');
+  ta.placeholder='여기에 이메일·문자 내용을 붙여넣으면 자동으로 정리됩니다.\n(또는 아래 칸에 직접 입력)';
+  try{ ta.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+  setTimeout(()=>{try{ta.focus();}catch(e){}},200);
+ };
+ // ─── 이미지 올리기 (OCR 시도, 실패/흐릿하면 직접기입 안내) ───
  $('bk_img').onclick=()=>$('bk_file').click();
  $('bk_file').onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(f){ocrRun(f);} e.target.value=''; };
+}
+// 이미지 전처리: 확대 + 흑백 + 대비 ↑ (어두운 테마 캡처의 인식률을 높인다)
+async function ocrPrep(file){
+ try{
+  const cv=document.createElement('canvas');
+  const ctx=cv.getContext&&cv.getContext('2d');
+  if(!ctx) return file;                          // 캔버스 미지원(테스트 등) → 원본 사용
+  const url=URL.createObjectURL(file);
+  const img=await Promise.race([
+    new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(0);im.src=url;}),
+    new Promise((_,rej)=>setTimeout(()=>rej(0),8000))
+  ]);
+  const W=img.naturalWidth||img.width, H=img.naturalHeight||img.height;
+  if(!W||!H){ URL.revokeObjectURL(url); return file; }
+  const scale=Math.min(2.5, Math.max(1, 1700/W));
+  cv.width=Math.round(W*scale); cv.height=Math.round(H*scale);
+  ctx.drawImage(img,0,0,cv.width,cv.height);
+  try{
+   const id=ctx.getImageData(0,0,cv.width,cv.height), p=id.data;
+   for(let i=0;i<p.length;i+=4){
+    let g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
+    g=(g-128)*1.55+128; g=g<0?0:g>255?255:g;      // 대비 강화
+    p[i]=p[i+1]=p[i+2]=g;
+   }
+   ctx.putImageData(id,0,0);
+  }catch(e){}
+  URL.revokeObjectURL(url);
+  return cv;
+ }catch(e){ return file; }
 }
 // Tesseract.js 를 필요할 때만 CDN 에서 로드 (초기 로딩 가볍게)
 let _ocrLib=null;
@@ -2692,30 +2751,34 @@ async function ocrRun(file){
  const $=id=>document.getElementById(id);
  const box=$('bk_ocr'); box.hidden=false;
  const show=(h,cls)=>{box.innerHTML=h; box.style.color=cls||'var(--dim)';};
- show('📷 이미지 읽는 중… 처음 한 번은 한글 인식 데이터를 받느라 조금 걸립니다');
+ const manual='<br><span style="color:var(--faint)">잘 안 될 때: 갤러리에서 캡처를 열고 <b>텍스트 추출/복사</b>로 복사해 아래 칸에 붙여넣거나, 직접 입력하세요.</span>';
+ show('📷 이미지 준비 중…');
  let done=false;
- // 25초 안에 못 끝내면 수동으로 안내
+ // 40초 안에 못 끝내면 직접기입으로 안내 (첫 실행은 한글 데이터를 받느라 느립니다)
  const timer=setTimeout(()=>{ if(!done){ done=true;
-   show('인식이 오래 걸립니다. 폰 갤러리에서 <b>텍스트 복사</b>(길게 눌러 전체 선택) 후 아래 칸에 붙여넣어 주세요.','var(--amber)');
- }},25000);
+   show('인식이 오래 걸립니다.'+manual,'var(--amber)');
+ }},40000);
  try{
   const T=await ocrLoad();
-  const {data}=await T.recognize(file,'kor+eng',{
+  if(done) return;
+  show('📷 글자 인식 중… 0%');
+  const src=await ocrPrep(file);
+  const {data}=await T.recognize(src,'kor+eng',{
    logger:m=>{ if(done)return; if(m.status==='recognizing text'){
      show('📷 글자 인식 중… '+Math.round((m.progress||0)*100)+'%'); } }
   });
   if(done) return; done=true; clearTimeout(timer);
-  const text=(data&&data.text||'').replace(/\n{2,}/g,'\n').trim();
-  if(text.length<4){ show('이미지에서 글자를 찾지 못했습니다. 더 또렷한 캡처를 쓰거나, 텍스트를 직접 붙여넣어 주세요.','var(--amber)'); return; }
+  const text=(data&&data.text||'').replace(/[ \t]+\n/g,'\n').replace(/\n{2,}/g,'\n').trim();
+  if(text.length<4){ show('이미지에서 글자를 찾지 못했습니다.'+manual,'var(--amber)'); return; }
   $('bk_raw').value=text;
   $('bk_raw').dispatchEvent(new Event('input'));
   // 핵심 필드가 비었으면 확인 요청
   const miss=['bk_d','bk_t','bk_from','bk_to'].filter(i=>!$(i).value);
-  if(miss.length) show('글자를 읽었습니다. 아래 내용과 비어있는 칸을 확인해 주세요.','var(--amber)');
+  if(miss.length) show('글자를 읽었습니다. 인식이 정확하지 않을 수 있으니 빈 칸과 내용을 확인·수정해 주세요.'+manual,'var(--amber)');
   else show('✓ 이미지에서 예약 정보를 채웠습니다. 내용을 확인하고 저장하세요.','var(--occ)');
  }catch(err){
   if(done) return; done=true; clearTimeout(timer);
-  show('이미지 인식 기능을 불러오지 못했습니다(네트워크 확인). 폰에서 텍스트를 복사해 아래 칸에 붙여넣어 주세요.','var(--amber)');
+  show('이미지 인식 기능을 불러오지 못했습니다(네트워크 확인).'+manual,'var(--amber)');
  }
 }
 function liveClash(){
@@ -3570,7 +3633,7 @@ const TRIP_COLS=[
  '공차분','공차km','공차직선km','공차속도kmh','공차방향','공차분리','공차시작',
  '배회분','배회km','배회방향','픽업분','픽업km','픽업방향',
  '날씨','강수형태','강수mm','기온','하늘','풍속','습도',
- '호출','승객성별','국적','언어','결제','승객분류','기분','행사','운행구분','예약피크'];
+ '호출','승객성별','국적','언어','결제','승객분류','연령대','기분','행사','운행구분','예약피크'];
 function tripRow(t){
  const fr=fromReg(t), tr=toReg(t), d=t.start?new Date(t.start):null;
  const dc=t.daycontext||{}, w=t.weather||{}, g=t.tag||{}, de=t.dead||{}, ca=t.call||{};
@@ -3586,7 +3649,7 @@ function tripRow(t){
   de.roamMin??ca.roamMin??(de.split?'':de.min??''),de.roamKm??ca.roamKm??'',de.roamDir??ca.roamDir??'',
   de.pickMin??ca.pickMin??'',de.pickKm??ca.pickKm??'',de.pickDir??ca.pickDir??'',
   w.cls||'',w.pty??'',w.rn1??'',w.t1h??'',w.sky??'',w.wsd??'',w.reh??'',
-  g.call||'',g.pax||'',g.nat||'',g.lang||'',g.pay||'',g.ptype||'',g.mood||'',(t.events||[]).join(';'),
+  g.call||'',g.pax||'',g.nat||'',g.lang||'',g.pay||'',g.ptype||'',g.age||'',(Array.isArray(g.mood)?g.mood.join(';'):(g.mood||'')),(t.events||[]).join(';'),
   t.kind==='reserved'?'예약운행':'즉시콜',t.bookPeak??''];
 }
 const DAY_COLS=['업무일','매출','건수','건당','시간당','실차시간당','탑승률','근무시작','근무종료','근무분','운행시간','실차시간','승차율',
@@ -3737,7 +3800,7 @@ function renderAnal(){
   document.getElementById('anempty').innerHTML=
    '<div class="empty">운행 기록이 3건 이상 쌓이면<br>분석이 시작됩니다.<br><br>현재 '+T.length+'건</div>';
   ['ankpi','chHour','lbHour','chDow','lbDow','rkFrom','acc','rkPeak','kpi2','chElapse','lbElapse',
-   'dnCall','dnPay','rkPax','rkPtype','splitBox','rkFare','chSlot','lbSlot','tsBox','wowBox','fuelBox'].forEach(i=>{
+   'dnCall','dnPay','rkPax','rkPtype','rkAge','splitBox','rkFare','chSlot','lbSlot','tsBox','wowBox','fuelBox'].forEach(i=>{
    const e=document.getElementById(i); if(e)e.innerHTML='';});
   return;}
  document.getElementById('anempty').innerHTML='';
@@ -3831,15 +3894,17 @@ function renderAnal(){
    '<div class="card"><h5>결제 방식</h5><div id="dnPay"></div></div>'+
    '<div class="card"><h5>승객 성별</h5><div class="rank" id="rkPax"></div></div>'+
    '<div class="card"><h5>승객 분류</h5><div class="rank" id="rkPtype"></div></div>'+
+   '<div class="card"><h5>주요 연령대</h5><div class="rank" id="rkAge"></div></div>'+
    '<div class="card"><h5>승객 국적</h5><div class="rank" id="rkNat"></div></div>'+
    '<div class="card"><h5>요금 구간 분포</h5><div class="rank" id="rkFare"></div></div>';
   const cnt=(f)=>{const m={};T.forEach(t=>{const v=t.tag&&t.tag[f];if(v)m[v]=(m[v]||0)+1;});
     return Object.entries(m).map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);};
-  const cl=cnt('call'), py=cnt('pay'), px=cnt('pax'), nt=cnt('nat'), pt=cnt('ptype');
+  const cl=cnt('call'), py=cnt('pay'), px=cnt('pax'), nt=cnt('nat'), pt=cnt('ptype'), ag=cnt('age');
   donut('dnCall',cl,cl.reduce((a,x)=>a+x.v,0));
   donut('dnPay',py,py.reduce((a,x)=>a+x.v,0));
   hbar('rkPax',px.length?px:[{k:'기록 없음',v:0}],'건');
   hbar('rkPtype',pt.length?pt:[{k:'기록 없음',v:0}],'건');
+  hbar('rkAge',ag.length?ag:[{k:'기록 없음',v:0}],'건');
   hbar('rkNat',nt.length?nt:[{k:'기록 없음',v:0}],'건');
   const B=[['1만 이하',0,10000],['1~2만',10000,20000],['2~3만',20000,30000],
            ['3~5만',30000,50000],['5만 초과',50000,1e9]];
@@ -4272,7 +4337,7 @@ function editTrip(id){
            t.toRoad||t.toFull?'하차 주소: '+(t.toRoad||t.toFull)+(t.toJibun?' ('+t.toJibun+')':''):''].filter(Boolean);
  document.getElementById('ed_addr').innerHTML=ad.join('<br>');
  edOrig={from:t.from||'',to:t.to||'',fp:t.fromAddr||'',tp:t.toAddr||''};
- tagPick={call:null,pax:null,nat:null,lang:null,pay:null,ptype:null,mood:null,...(t.tag||{})};
+ tagPick={call:null,pax:null,nat:null,lang:null,pay:null,ptype:null,age:null,mood:null,...(t.tag||{})};
  drawTagsIn('#ed_tags');
  document.getElementById('edit').classList.add('on');
 }
@@ -4301,36 +4366,41 @@ function initEdit(){
   if(vtp!==edOrig.tp){ t.toAddr=vtp||null; t.toPlaceEdited=true; }
   if(ns||ne) t.flagShort = !!(t.end&&t.end-t.start<60000);
   t.tag=tagWithDefaults(tagPick);
-  const a=calcPeak(t); if(a!=null) t.autoPeak=a;
+  try{ const a=calcPeak(t); if(a!=null) t.autoPeak=a; }catch(e){}
   trips.sort((x,y)=>x.start-y.start);
   if(ns||ne){ try{ recalcDead(); }catch(e){} }
-  await Store.set(KEY,trips); await commitDay();
-  sh.classList.remove('on'); render();};
+  try{ await Store.set(KEY,trips); }catch(e){ console.warn('저장 실패',e&&e.message); }
+  try{ await commitDay(); }catch(e){}
+  sh.classList.remove('on'); try{ render(); }catch(e){}};
 }
 
 /* ─── 손님 태그 ─── */
 const TAG={
  call:['카카오','우버','티머니GO','길손님'],
  pax:['남성','여성','혼성','커플','단체'],
- nat:['중국','일본','대만','미국','홍콩','필리핀','베트남','싱가포르','인도네시아','태국','기타'],
- lang:['영어','중국어','일본어','스페인어','독일어','프랑스어','그외'],
+ nat:['한국','중국','일본','대만','미국','홍콩','필리핀','베트남','싱가포르','인도네시아','태국','기타'],
+ lang:['한국어','영어','중국어','일본어','스페인어','독일어','프랑스어','그외'],
  pay:['앱결제','카드','현금'],
- ptype:['외국인 관광객','내국인 관광객','회사원','법조인','가정주부','회계 컨설팅','연예계 유튜버','교통약자','학생','기타'],
+ ptype:['외국인 관광객','내국인 관광객','회사원','법조인','가정주부','가족','회계 컨설팅','연예계 유튜버','교통약자','학생','기타'],
+ age:['2030','4050','60대 이상'],
  mood:['조용함','전화통화','고객간 대화','기사와 대화','친근함','차분함','정중함','까칠함','예민함','우울함','불안함','초조','취객','기타']};
 // 방한 11~20위 국가(가나다순) — 상위10 버튼 외의 '그외 국가' 드롭다운
 const NAT_MORE=['독일','러시아','말레이시아','멕시코','몽골','영국','인도','캐나다','프랑스','호주'];
-// 선택 안 하면 들어갈 기본값
-const TAG_DEFAULT={nat:'내국인', lang:'한국어'};
+// 선택 안 하면 들어갈 기본값 (맨 앞 '한국'·'한국어' 버튼과 동일)
+const TAG_DEFAULT={nat:'한국', lang:'한국어'};
+// 복수 선택이 가능한 태그 그룹
+const MULTI={mood:true};
 function tagWithDefaults(tp){ const o={...tp}; if(!o.nat)o.nat=TAG_DEFAULT.nat; if(!o.lang)o.lang=TAG_DEFAULT.lang; return o; }
-let tagPick={call:null,pax:null,nat:null,lang:null,pay:null,ptype:null,mood:null};
-let tagLast={call:null,pax:null,nat:null,lang:null,pay:null,ptype:null,mood:null};   // 직전 선택 유지
+let tagPick={call:null,pax:null,nat:null,lang:null,pay:null,ptype:null,age:null,mood:null};
+let tagLast={call:null,pax:null,nat:null,lang:null,pay:null,ptype:null,age:null,mood:null};   // 직전 선택 유지
 const KEY_TAGL='gongcha:taglast';
 function drawTags(){ drawTagsIn('#tagsec'); }
 function drawTagsIn(sel){
  const root=document.querySelector(sel); if(!root)return;
+ const isOn=(k,v)=> MULTI[k] ? (Array.isArray(tagPick[k])&&tagPick[k].includes(v)) : (tagPick[k]===v);
  for(const k of Object.keys(TAG)){
   const el=root.querySelector(`.tg[data-t="${k}"]`); if(!el)continue;
-  el.innerHTML=TAG[k].map(v=>`<button type="button" data-k="${k}" data-v="${v}" class="${tagPick[k]===v?'on':''}">${v}</button>`).join('');
+  el.innerHTML=TAG[k].map(v=>`<button type="button" data-k="${k}" data-v="${v}" class="${isOn(k,v)?'on':''}">${v}</button>`).join('');
  }
  // 국적 '그외 국가' 드롭다운 동기화
  const ns=root.querySelector('[data-natsel]');
@@ -4351,7 +4421,13 @@ function drawTagsIn(sel){
    const b=e.target.closest('.tg button'); if(!b||!root.contains(b))return;
    e.preventDefault(); e.stopPropagation();
    const k=b.dataset.k, v=b.dataset.v;
-   tagPick[k] = (tagPick[k]===v) ? null : v;
+   if(MULTI[k]){                                   // 분위기: 복수 선택(토글)
+    let arr=Array.isArray(tagPick[k])?tagPick[k].slice():(tagPick[k]?[tagPick[k]]:[]);
+    const i=arr.indexOf(v); if(i>=0)arr.splice(i,1); else arr.push(v);
+    tagPick[k]=arr.length?arr:null;
+   }else{
+    tagPick[k] = (tagPick[k]===v) ? null : v;
+   }
    drawTagsIn(sel);
   });
  }
@@ -6095,18 +6171,26 @@ async function togRun(){
   })();}
  await Store.set(KEY,trips);render();};
 document.getElementById('ok').onclick=async()=>{
- const v=parseInt(document.getElementById('fare').value,10);
- if(pending){
-  if(!isNaN(v))pending.fare=v;
-  const a=calcPeak(pending), b=refFare(pending);
-  if(a!=null){ pending.autoPeak=a; pending.peakSrc=b?b.src:'추정'; }
-  if(pickPeak) pending.peak=pickPeak;          // 기사 수정값 (우선)
-  pending.tag=tagWithDefaults(tagPick);
-  tagLast={...tagPick}; Store.set(KEY_TAGL,tagLast);
- }
- document.getElementById('dlg').close();
- try{ if(pending&&pending.end) await relocateToBoardingDay(pending); }catch(e){ console.warn('전일 귀속 실패',e.message); }
- await Store.set(KEY,trips);await Store.set(KEY_ODO,odo);await commitDay();render();};
+ // 어떤 단계에서 오류가 나도 '저장'은 반드시 끝까지 되도록 각 단계를 보호한다.
+ // (국적·언어를 고르지 않아도 기본값 내국인·한국어로 저장된다)
+ try{
+  const v=parseInt(document.getElementById('fare').value,10);
+  if(pending){
+   if(!isNaN(v))pending.fare=v;
+   try{ const a=calcPeak(pending), b=refFare(pending);
+        if(a!=null){ pending.autoPeak=a; pending.peakSrc=b?b.src:'추정'; } }catch(e){}
+   if(pickPeak) pending.peak=pickPeak;          // 기사 수정값 (우선)
+   pending.tag=tagWithDefaults(tagPick);         // 선택 안 한 국적·언어는 여기서 기본값
+   tagLast={...tagPick}; try{ Store.set(KEY_TAGL,tagLast); }catch(e){}
+  }
+ }catch(e){ console.warn('요금/태그 처리 중 오류(저장은 계속)',e); }
+ try{ document.getElementById('dlg').close(); }catch(e){}
+ try{ if(pending&&pending.end) await relocateToBoardingDay(pending); }catch(e){ console.warn('전일 귀속 실패',e&&e.message); }
+ try{ await Store.set(KEY,trips); await Store.set(KEY_ODO,odo); }catch(e){ console.warn('저장 실패',e&&e.message); }
+ try{ await commitDay(); }catch(e){ console.warn('일집계 실패',e&&e.message); }
+ try{ render(); }catch(e){}
+ try{ const h=document.getElementById('hint'); if(h) h.textContent='빈차 · 저장됨 · 손님을 태우면 누르세요'; }catch(e){}
+};
 document.getElementById('skip').onclick=()=>{document.getElementById('dlg').close();render();};
 { const _imp=document.getElementById('imp'); if(_imp) _imp.onclick=()=>{
  const i=document.createElement('input');i.type='file';i.accept='.json';
@@ -6143,7 +6227,7 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
  if(expense&&'fee' in expense){ delete expense.fee; await Store.set(KEY_EXP,expense); }   // v27: 수수료 항목 제거
  obs=(await Store.get(KEY_OBS))||{};
  rrobs=(await Store.get(KEY_RROBS))||{};
- tagLast=(await Store.get(KEY_TAGL))||{call:null,pax:null,pay:null,ptype:null,mood:null};
+ tagLast=(await Store.get(KEY_TAGL))||{call:null,pax:null,pay:null,ptype:null,age:null,mood:null};
  fuels=(await Store.get(KEY_FUEL))||[];
  const rs=await Store.get(KEY_REST);
  if(rs){ if(Array.isArray(rs)) rests=rs; else {rests=rs.r||[]; restOn=rs.on||null;} }
