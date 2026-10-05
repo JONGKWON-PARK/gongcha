@@ -2636,6 +2636,7 @@ function initCust(){
  $('cu_new').onclick=()=>{
   const c=custs[cuKey]; if(!c)return;
   sh.classList.remove('on');
+  bkManual=true;
   document.getElementById('bk_form').hidden=false;
   document.getElementById('bk_name').value=c.name;
   document.getElementById('bk_tel').value=c.tel||'';
@@ -2658,10 +2659,18 @@ function initCust(){
   document.getElementById('bk_d').focus();};
 }
 
+let bkManual=false;   // 직접기입 모드: 폼을 열어두고 자동숨김 안 함
 function initBook(){
  const $=id=>document.getElementById(id);
+ // 직접기입: 하위 분류(날짜·시각·출발·도착·인원·짐·요금 등) 칸을 바로 열어 손으로 채운다
+ const openManual=()=>{
+  bkManual=true; $('bk_form').hidden=false;
+  if(!$('bk_dur').value)$('bk_dur').value=60;
+  try{ $('bk_form').scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){}
+ };
  $('bk_raw').addEventListener('input',()=>{
-  const t=$('bk_raw').value.trim(); if(t.length<6){$('bk_form').hidden=true;return;}
+  const t=$('bk_raw').value.trim(); if(!bkManual && t.length<6){$('bk_form').hidden=true;return;}
+  if(t.length<6){return;}            // 직접기입 모드면 폼은 열어둔 채 대기
   const r=parseMsg(t);
   $('bk_form').hidden=false;
   if(r.d)$('bk_d').value=r.d; if(r.t)$('bk_t').value=r.t;
@@ -2675,7 +2684,7 @@ function initBook(){
   if(!$('bk_dur').value)$('bk_dur').value=60;
   liveClash();});
  ['bk_d','bk_t','bk_from','bk_to','bk_dur'].forEach(i=>$(i).addEventListener('input',liveClash));
- $('bk_cancel').onclick=()=>{$('bk_raw').value='';$('bk_form').hidden=true;editId=null;
+ $('bk_cancel').onclick=()=>{$('bk_raw').value='';$('bk_form').hidden=true;editId=null;bkManual=false;
   if($('bk_ocr'))$('bk_ocr').hidden=true;
   ['bk_d','bk_t','bk_from','bk_to','bk_name','bk_tel','bk_email','bk_pax','bk_bag','bk_fare','bk_peak','bk_memo'].forEach(i=>$(i).value='');};
  $('bk_save').onclick=async()=>{
@@ -2692,16 +2701,17 @@ function initBook(){
    if(b.email)custs[k].email=b.email;
    await Store.set(KEY_CUST,custs);}
   $('bk_cancel').click(); renderBook();};
- // ─── 이메일 복붙 or 직접기입: 입력칸으로 바로 이동·포커스 ───
+ // ─── 이메일 복붙 or 직접기입: 입력칸 + 하위 분류 폼을 함께 열어 직접 채우게 한다 ───
  $('bk_email_btn').onclick=()=>{
   if($('bk_ocr'))$('bk_ocr').hidden=true;
   const ta=$('bk_raw');
-  ta.placeholder='여기에 이메일·문자 내용을 붙여넣으면 자동으로 정리됩니다.\n(또는 아래 칸에 직접 입력)';
+  ta.placeholder='여기에 이메일·문자 내용을 붙여넣으면 자동으로 정리됩니다.\n(또는 아래 칸들을 직접 선택·입력)';
+  openManual();                       // 하위 분류(날짜·시각·출발·도착…) 바로 노출
   try{ ta.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
   setTimeout(()=>{try{ta.focus();}catch(e){}},200);
  };
- // ─── 이미지 올리기 (OCR 시도, 실패/흐릿하면 직접기입 안내) ───
- $('bk_img').onclick=()=>$('bk_file').click();
+ // ─── 이미지 올리기 (OCR 시도) + 직접기입(폼 노출): 사진 선택창을 열고, 취소해도 폼은 떠 있다 ───
+ $('bk_img').onclick=()=>{ openManual(); $('bk_file').click(); };
  $('bk_file').onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(f){ocrRun(f);} e.target.value=''; };
 }
 // 이미지 전처리: 확대 + 흑백 + 대비 ↑ (어두운 테마 캡처의 인식률을 높인다)
