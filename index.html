@@ -1311,6 +1311,19 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
     비워두면 거리 기반 추정식을 씁니다. 경로안내 1일 1,000건 무료이며,
     키는 이 기기에만 저장됩니다.
   </div>
+
+  <label>클라우드 자동 보관 (Google Apps Script 웹앱 주소)</label>
+  <input id="cloud_url" placeholder="https://script.google.com/macros/s/..../exec" autocomplete="off" spellcheck="false">
+  <div style="display:flex;gap:6px;margin-top:6px">
+    <div style="flex:1.3"><div class="glab">기사 ID (구분용)</div><input id="cloud_driver" placeholder="예: 박종권 또는 car01" autocomplete="off"></div>
+    <div style="flex:1"><div class="glab">전송 암호(선택)</div><input id="cloud_token" placeholder="웹앱과 동일" autocomplete="off"></div>
+  </div>
+  <div id="cloud_stat" class="note2" style="margin:7px 0 4px;font-size:10.5px"></div>
+  <button class="opt" id="cloud_sync" style="text-align:center;margin:0 0 8px">지금 동기화</button>
+  <div style="font-size:10.5px;color:var(--faint);margin:-2px 0 14px;line-height:1.5">
+    주소를 넣으면 <b>운행 종료 때마다 그날 데이터(JSON)가 자동으로 내 구글 드라이브·시트에 저장</b>됩니다.
+    오프라인이면 기기에 모아뒀다가 연결되면 자동 전송합니다. 기기 저장은 그대로 유지됩니다.
+  </div>
   <label>3단계 누적 매출 목표</label>
   <div style="display:flex;gap:6px;margin-bottom:4px">
     <div style="flex:1"><div class="glab">1단계 시각</div><input id="g_h0" type="number" inputmode="numeric" placeholder="7"></div>
@@ -3687,6 +3700,17 @@ function dlText(text,name,mime){
   return true;
  }catch(e){ return false; }
 }
+// 모바일에서 파일을 확실히 꺼내오기: 공유 시트(파일·드라이브·메일·카톡 등)로 내보내고,
+// 안 되면 파일 다운로드로 떨어진다. (데스크톱/테스트는 바로 다운로드)
+async function shareOrDownload(text,name,mime){
+ try{
+  if(navigator.canShare && typeof File!=='undefined'){
+   const file=new File([text],name,{type:(mime||'text/csv')});
+   if(navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:name}); return true; }
+  }
+ }catch(e){ /* 사용자가 공유를 취소하면 다운로드로 떨어진다 */ }
+ return dlText(text,name,mime);
+}
 function csvTrips(T){
  return [TRIP_COLS.join(',')].concat(T.map(t=>tripRow(t).map(CSVQ).join(','))).join('\n');
 }
@@ -3700,16 +3724,16 @@ function exportRange(which){
    T=ALL.filter(t=>tripYMD(t)===y); H=H.filter(h=>h.date===y); tag=y; }
  else if(which==='period'){ T=ALL.filter(inPeriod); H=H.filter(h=>inPeriodYMD(h.date)); tag=_pw.lab.replace(/[ ~]/g,''); }
  if(!T.length&&!H.length){ alert('내보낼 기록이 없습니다.'); return; }
- dlText(csvTrips(T),`gongcha_운행_${tag}.csv`);
- setTimeout(()=>dlText(csvDays(H),`gongcha_일별_${tag}.csv`),600);
+ shareOrDownload(csvTrips(T),`gongcha_운행_${tag}.csv`);
+ setTimeout(()=>shareOrDownload(csvDays(H),`gongcha_일별_${tag}.csv`),600);
  const st=document.getElementById('exStat');
  if(st) st.innerHTML=`내보냄 — 운행 <b>${T.length}건</b> · 일별 <b>${H.length}일</b> (${tag})`;
 }
-function exportFullJSON(){
- const ok=dlJSON({app:'gongcha',schema:2,exported:new Date().toISOString(),bizdate:bizDate(),
+async function exportFullJSON(){
+ const json=JSON.stringify({app:'gongcha',schema:2,exported:new Date().toISOString(),bizdate:bizDate(),
    cfg:CFG,trips,tripArchive,history,expList,expense,odo,fuels,rests,shifts,obs,books,custs,
-   zonesNote:'지역은 좌표→시군구 자동 판정이므로 별도 분류표 없음'},
-   'gongcha_전체_'+bizDate()+'.json');
+   zonesNote:'지역은 좌표→시군구 자동 판정이므로 별도 분류표 없음'},null,1);
+ const ok=await shareOrDownload(json,'gongcha_전체_'+bizDate()+'.json','application/json');
  const st=document.getElementById('exStat');
  if(st) st.innerHTML=ok?'전체 JSON을 내보냈습니다 — 앱 복원과 정밀 분석에 모두 쓸 수 있습니다.':'내보내기 실패';
 }
@@ -3748,13 +3772,18 @@ function initShift(){
    if(!confirm(msg)) return;
    await shiftEnd();
    try{ await commitDay(); buildZoneRate(); }catch(e){}
-   dest=null; await Store.set(KEY,trips); render();
+   dest=null; await Store.set(KEY,trips);
+   // 운행 종료와 동시에 오늘 하루 데이터를 기기에 자동 저장 (팝업 없음)
+   try{ await backupDay(BIZ, done); await Store.set(KEY_LASTBK,bizDate()); }catch(e){}
+   try{ await cloudQueueFlush(BIZ); }catch(e){}   // 클라우드 자동 보관(설정돼 있으면)
+   try{ const h=document.getElementById('hint'); if(h) h.textContent='운행 종료 · 오늘 데이터 저장됨'+(cloudEnabled()?((cloud.outbox||[]).length?' · 클라우드 전송 대기':' · 클라우드 전송'):''); }catch(e){}
+   render();
   } else await shiftStart();
  };
  const c=document.getElementById('tlcsv');
  if(c) c.onclick=()=>{ const t=csvTimeline(BIZ);
   if(t.split('\n').length<2){ alert('오늘 기록이 없습니다.'); return; }
-  dlText(t,`gongcha_타임라인_${BIZ}.csv`); };
+  shareOrDownload(t,`gongcha_타임라인_${BIZ}.csv`); };
  drawShift(); drawDead(); drawTimeline();
  // 자정 전환을 놓치지 않도록 1분마다 확인한다 (앱을 켜둔 채 자정을 넘기는 경우)
  setInterval(()=>{ checkRollover().then(ch=>{ if(ch) render(); }); }, 60000);
@@ -4564,6 +4593,10 @@ document.getElementById('opset').onclick=()=>{
  try{ clearStuckOverlay(); }catch(e){}
  try{ document.getElementById('key').value=apiKey;
        const _ak=document.getElementById('airkey'); if(_ak) _ak.value=airKey;
+       const _cu=document.getElementById('cloud_url'); if(_cu)_cu.value=cloud.url||'';
+       const _cd=document.getElementById('cloud_driver'); if(_cd)_cd.value=cloud.driverId||'';
+       const _ct=document.getElementById('cloud_token'); if(_ct)_ct.value=cloud.token||'';
+       cloudDraw();
        fillCfg(); drawMy(); }catch(e){ console.warn('설정',e.message); }
  setSheet.classList.add('on');
  const cd=setSheet.querySelector('.card'); if(cd) cd.scrollTop=0;};
@@ -4594,6 +4627,15 @@ document.getElementById('setclose').onclick=async()=>{
              holLoadYears().then(ctxDraw).catch(()=>{});
              wxForTrip().then(x=>{ if(x){wxLast={ck:'set',v:x}; ctxDraw();} }).catch(()=>{});
            } }
+  // 클라우드 자동 보관 설정 저장
+  try{
+   const cu=document.getElementById('cloud_url'), cd=document.getElementById('cloud_driver'), ct=document.getElementById('cloud_token');
+   if(cu){ cloud.url=(cu.value||'').trim(); }
+   if(cd){ cloud.driverId=(cd.value||'').trim(); }
+   if(ct){ cloud.token=(ct.value||'').trim(); }
+   await cloudSave(); cloudDraw();
+   if(cloudEnabled()) cloudFlush();            // 주소가 생겼으면 밀린 것 전송 시도
+  }catch(e){ console.warn('클라우드 설정 저장',e&&e.message); }
   const back=await Store.get(KEY_API);          // 실제 저장됐는지 재확인
   if(back!==apiKey) throw new Error('저장 확인 실패');
   msg.style.color='var(--occ)';
@@ -4605,6 +4647,17 @@ document.getElementById('setclose').onclick=async()=>{
   msg.style.color='var(--vac)';
   msg.textContent='저장 실패: '+e.message+' — 시크릿 모드이거나 저장공간이 가득 찼는지 확인하세요';
  }};
+{ const cs=document.getElementById('cloud_sync'); if(cs) cs.onclick=async()=>{
+   const cu=document.getElementById('cloud_url'), cd=document.getElementById('cloud_driver'), ct=document.getElementById('cloud_token');
+   if(cu) cloud.url=(cu.value||'').trim();
+   if(cd) cloud.driverId=(cd.value||'').trim();
+   if(ct) cloud.token=(ct.value||'').trim();
+   if(!cloudEnabled()){ alert('먼저 웹앱 주소를 입력해 주세요.'); return; }
+   try{ const done=trips.filter(t=>t.end && tripYMD(t)===BIZ); if(done.length){ await backupDay(BIZ,done); cloudQueue(BIZ); } }catch(e){}
+   await cloudSave();
+   const s=document.getElementById('cloud_stat'); if(s) s.innerHTML='전송 중…';
+   await cloudFlush();
+ }; }
 setSheet.onclick=e=>{if(e.target===setSheet){
  const m=document.getElementById('setmsg');
  m.style.color='var(--amber)';
@@ -4864,29 +4917,120 @@ function dlJSON(obj,name){
 // 그래서 자동으로 내려받으려 시도하지 않고, 눈에 띄는 알림줄을 띄워
 // 한 번 누르면 저장되게 한다. 저장 전까지 알림은 사라지지 않는다.
 let bkPending=null;
+// 하루치를 기기(앱 저장소)에 조용히 백업한다. 팝업/다운로드 없음 — 100% 자동.
+async function backupDay(date, tripsArr){
+ try{
+  const snap=ctxSnapshot(); snap.bizdate=date;
+  if(Array.isArray(tripsArr)) snap.trips=tripsArr;
+  await Store.set(KEY_BAK+date, snap);
+  return true;
+ }catch(e){ console.warn('하루 백업 실패',e&&e.message); return false; }
+}
+// 업무일이 바뀌면 지난 업무일을 조용히 백업하고 넘어간다. (저장/나중에 바를 띄우지 않는다)
 async function autoBackup(){
  const today=bizDate();
  const last=await Store.get(KEY_LASTBK);
  if(!last){ await Store.set(KEY_LASTBK,today); return; }   // 첫 실행일은 기준만 잡는다
  if(last===today) return;                                  // 오늘 것은 아직 진행 중
  const arch=await Store.get('gongcha:'+last);              // 지난 업무일 기록
- if(!arch||!arch.length){ await Store.set(KEY_LASTBK,today); return; }
- bkPending={date:last, data:arch};
- bkDraw();
+ if(arch&&arch.length){ await backupDay(last, arch); await cloudQueueFlush(last); }  // 조용히 기기 백업 + 클라우드 큐
+ await Store.set(KEY_LASTBK,today);
+ try{ const el=document.getElementById('bkbar'); if(el){ el.hidden=true; el.innerHTML=''; } }catch(e){}
 }
+
+/* ─── 클라우드 자동 보관 (Google Apps Script 웹앱) ───
+   운행 종료/업무일 전환 때 그날 JSON을 내 구글 드라이브·시트로 자동 전송.
+   오프라인이면 outbox 큐에 모았다가 연결되면 재전송. 기기 저장은 항상 유지된다.
+   브라우저↔Apps Script 간 CORS 때문에 no-cors(fire-and-forget)로 보내며,
+   서버는 멱등(파일 덮어쓰기·행 upsert)이라 중복 전송돼도 안전하다. */
+const KEY_CLOUD='gongcha:cloud';
+let cloud={url:'',driverId:'',token:'',outbox:[],lastSync:'',lastErr:''};
+let cloudBusy=false;
+function cloudEnabled(){ return !!(cloud&&cloud.url); }
+async function cloudLoad(){ try{ const c=await Store.get(KEY_CLOUD); if(c&&typeof c==='object') cloud=Object.assign(cloud,c); }catch(e){} if(!Array.isArray(cloud.outbox))cloud.outbox=[]; }
+async function cloudSave(){ try{ await Store.set(KEY_CLOUD,cloud); }catch(e){} }
+function cloudQueue(date){ if(!date)return; if(!Array.isArray(cloud.outbox))cloud.outbox=[]; if(!cloud.outbox.includes(date)) cloud.outbox.push(date); }
+async function cloudPayload(date){
+ let snap=null;
+ try{ snap=await Store.get(KEY_BAK+date); }catch(e){}
+ if(!snap){ try{ const arr=await Store.get('gongcha:'+date); if(arr&&arr.length) snap={bizdate:date,trips:arr}; }catch(e){} }
+ if(!snap) return null;
+ return JSON.stringify({app:'gongcha',type:'day',driverId:cloud.driverId||'',token:cloud.token||'',
+   bizdate:date, exported:new Date().toISOString(), data:snap});
+}
+async function cloudSendOne(date){
+ const body=await cloudPayload(date);
+ if(body==null) return true;                 // 보낼 게 없으면 성공으로 간주(큐에서 제거)
+ try{
+  await fetch(cloud.url,{method:'POST',mode:'no-cors',
+    headers:{'Content-Type':'text/plain;charset=utf-8'}, body});
+  return true;                               // 전송됨(응답 opaque — 실제 저장은 시트/드라이브에서 확인)
+ }catch(e){ cloud.lastErr=(e&&e.message)||'전송 실패'; return false; }
+}
+async function cloudFlush(){
+ if(cloudBusy || !cloudEnabled()){ cloudDraw(); return; }
+ if(!cloud.outbox||!cloud.outbox.length){ cloudDraw(); return; }
+ if(typeof navigator!=='undefined' && navigator.onLine===false){ cloudDraw(); return; }  // 오프라인이면 대기
+ cloudBusy=true;
+ const pending=cloud.outbox.slice();
+ for(const date of pending){
+  const okk=await cloudSendOne(date);
+  if(okk){ cloud.outbox=cloud.outbox.filter(d=>d!==date); cloud.lastSync=new Date().toISOString(); cloud.lastErr=''; }
+ }
+ cloudBusy=false;
+ await cloudSave(); cloudDraw();
+}
+// 큐에 넣고 바로 전송 시도 (운행 종료/롤오버에서 호출)
+async function cloudQueueFlush(date){ cloudQueue(date); await cloudSave(); return cloudFlush(); }
+function cloudDraw(){
+ const s=document.getElementById('cloud_stat'); if(!s) return;
+ if(!cloudEnabled()){ s.innerHTML='<span style="color:var(--faint)">미설정 — 웹앱 주소를 넣으면 운행 종료 때 자동 전송됩니다.</span>'; return; }
+ const n=(cloud.outbox||[]).length;
+ let last='없음';
+ try{ if(cloud.lastSync) last=new Date(cloud.lastSync).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){}
+ s.innerHTML=`<span style="color:var(--occ)">자동 보관 켜짐</span>${cloud.driverId?' · '+cloud.driverId:''} · 마지막 전송 ${last} · `+
+   (n?`<span style="color:var(--amber)">미전송 ${n}건</span>`:'미전송 0건')+
+   (n&&cloud.lastErr?`<br><span style="color:var(--faint)">${cloud.lastErr}</span>`:'');
+}
+const KEY_BAK='gongcha:bak:';   // 날짜별 앱 내부 백업 (파일 저장 실패해도 기기에 보관)
+// 백업 실행: ① 앱 저장소에 확실히 보관(오프라인 100%) ② 가능하면 파일/공유로 내보내기
+async function doBackup(opt){
+ opt=opt||{};
+ const el=document.getElementById('bkbar');
+ const setMsg=(h)=>{ if(el){ const s=el.querySelector('span'); if(s) s.innerHTML=h; else el.innerHTML='<span>'+h+'</span>'; } };
+ if(!bkPending) return false;
+ const date=bkPending.date, fname=`gongcha_${date}.json`;
+ let okStore=false, json='';
+ try{
+  const snap=ctxSnapshot(); snap.bizdate=date; snap.trips=bkPending.data;
+  json=JSON.stringify(snap);
+  try{ await Store.set(KEY_BAK+date, snap); okStore=true; }    // ★ 기기에 확실히 저장
+  catch(e){ console.warn('백업 저장 실패',e&&e.message); }
+  if(opt.wantFile){
+   let shared=false;
+   try{                                                        // 모바일: 공유 시트로 파일 내보내기(파일/드라이브 저장)
+    if(navigator.canShare && typeof File!=='undefined'){
+     const file=new File([json],fname,{type:'application/json'});
+     if(navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:fname}); shared=true; }
+    }
+   }catch(e){ /* 사용자가 공유를 취소해도 앱 저장은 유지된다 */ }
+   if(!shared){ try{ dlJSON(JSON.parse(json),fname); }catch(e){} }  // 안 되면 파일 다운로드 시도
+  }
+ }catch(e){ console.warn('백업 처리 오류',e&&e.message); }
+ if(okStore){
+  if(opt.markDone){ try{ await Store.set(KEY_LASTBK,bizDate()); }catch(e){} bkPending=null; }
+  setMsg(`<b style="color:var(--occ)">✓ ${date} 백업 저장됨</b> — 기기에 보관`+(opt.markDone?'':' · "나중에"로 접어둠'));
+  setTimeout(()=>{ if(opt.markDone) bkDraw(); else if(el) el.hidden=true; }, 1600);
+ }else{
+  setMsg('<b style="color:var(--vac)">저장 실패</b> — 운행 탭 하단 "전체 JSON" 내보내기를 써 주세요');
+ }
+ return okStore;
+}
+// 백업 대기 바('저장'/'나중에')는 더 이상 띄우지 않는다.
+// 하루 데이터는 운행 종료 시(또는 업무일 전환 시) 자동으로 기기에 저장된다.
 function bkDraw(){
  const el=document.getElementById('bkbar'); if(!el) return;
- if(!bkPending){ el.hidden=true; return; }
- el.hidden=false;
- el.innerHTML=`<span><b>${bkPending.date}</b> 운행 기록 ${bkPending.data.length}건 · 백업 대기</span>`+
-              `<button id="bk_go">저장</button><button id="bk_skip" class="x">나중에</button>`;
- document.getElementById('bk_go').onclick=async()=>{
-  const snap=ctxSnapshot(); snap.bizdate=bkPending.date; snap.trips=bkPending.data;
-  if(dlJSON(snap,`gongcha_${bkPending.date}.json`)){
-   await Store.set(KEY_LASTBK,bizDate()); bkPending=null; bkDraw();
-  }else{ el.querySelector('span').innerHTML='<b style="color:var(--vac)">저장 실패</b> — 운행 탭 하단 내보내기를 쓰세요'; }
- };
- document.getElementById('bk_skip').onclick=()=>{ el.hidden=true; };  // 다음 실행 때 다시 뜬다
+ el.hidden=true; el.innerHTML='';
 }
 // 예약으로 운행 시작 대기 배너 (다음 '승객 탑승'을 예약운행으로 기록)
 function drawArmed(){
@@ -6306,6 +6450,9 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
   holLoadYears().then(ctxDraw);
   if(pos||airKey) wxForTrip().then(w=>{ if(w){wxLast={ck:'boot',v:w}; ctxDraw();} });
   autoBackup();
+  await cloudLoad(); cloudDraw();
+  cloudFlush();                                  // 앱 켤 때 밀린 전송 시도
+  try{ window.addEventListener('online',()=>cloudFlush()); }catch(e){}
  }catch(e){ console.warn('컨텍스트 로드 실패',e.message); }
 
  const _sh=(id,on)=>{const e=document.getElementById(id); if(e) e.classList[on?'add':'remove']('on');};
