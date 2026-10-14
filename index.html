@@ -85,6 +85,13 @@ header .clk{margin-left:auto;font-size:15px}
 .pbar .fill.done{background:var(--occ)}
 .pbar .fill.plan{background:var(--amber);opacity:.55}
 .uph.good .ub i{background:var(--occ)}
+.gfits{margin-top:4px}
+.gfit{position:relative;border-left:3px solid var(--line);padding:4px 78px 4px 8px;margin:4px 0;background:var(--panel);border-radius:0 6px 6px 0}
+.gfit .gft{font-size:12.5px}
+.gfit .pacc{position:absolute;right:6px;top:50%;transform:translateY(-50%)}
+.pnew{font-size:10px;padding:1px 5px;border:1px solid var(--amber);color:var(--amber);border-radius:4px}
+.pdiff{font-size:11.5px;margin-top:3px}
+.pfill{font-size:10px;padding:1px 5px;border:1px solid var(--occ);color:var(--occ);border-radius:4px}
 .pbridge{color:var(--occ);font-weight:600}
 .pext{font-size:11px;padding:1px 6px;border:1px solid var(--amber);color:var(--amber);border-radius:4px}
 .pbar .fill.fillst{background:repeating-linear-gradient(45deg,var(--amber) 0 4px,transparent 4px 8px);opacity:.45}
@@ -2723,6 +2730,10 @@ const BK_ERR=3, BK_LEAD=10;
 // 이동시간 모델 — 본인 운행 215건으로 보정(중앙오차 6.0→3.7분, 편향 −4.6→−0.3, 15km+ 편향 +3.9 보수적):
 //   승하차·출발 4분 + 도로환산 10km까지는 그 동·시각 속도×1.1, 그 너머는 직선×1.1을 65km/h(간선·고속)
 const BK_C0=4, BK_M=1.1, BK_R=10, BK_HW=65, BK_LD=1.1, BK_DAWN_CITY=1.3, BK_DAWN_HW=80;
+// 연결 구조 (JK 10.14 밤): 빈 시간이 길면 즉시콜을 돌다 다른 동네로 흘러가 있으므로 앞 하차지에서 바로 간다고 보지 않는다.
+//  BK_DRIFT_GAP분 이상 비면 다음 픽업까지 공차를 최소 BK_DRIFT_MIN분으로 본다. 앞뒤 콜과 BK_LINK분 안에 이어지지 않는 '외딴 후보'는
+//  혼자서도 4만/h 이상일 때만 추천 → 최소 2콜 이상이 바로 이어지는 구조 위주로.
+const BK_LINK=45, BK_DRIFT_GAP=90, BK_DRIFT_MIN=25;
 const BK_FUELKM=160;   // 공차 1km 연료비(벤티 LPG ≈ 6.5km/L × 1,050원) — 설계서 dp식의 c·deadKm 항
 const KEY_PLANCFG='gongcha:plancfg', KEY_BKUP='gongcha:bkuplog';
 // 기본값: 하루 10시간·40만원(JK 기본 목표), 하한 4만/h, 집 = 남양주 다산동(자택 주차 → 출발·귀가 지점)
@@ -2919,9 +2930,10 @@ function dpChain_(list,cfg){
  const between=(j,i)=>cnt[i]-cnt[j+1];
  const startH=bkHour_(cfg.startMs), liveStart=cfg.live&&Math.abs(cfg.startMs-Date.now())<30*60000;
  const home=P.map(b=>cfg.homeG&&useRet?bkTravel_(b._t,cfg.homeG,bkHour_(b._end)):{m:0,km:0});   // 귀가 반영은 설정(기본: 마지막 하차지 자유)
+ const lastMand=P.reduce((m,b)=>!b.cand?Math.max(m,b._end):m,0);
  const dp=new Array(n).fill(null);
  for(let i=0;i<n;i++){ const b=P[i];
-  if(b.cand&&(b._end+home[i].m*60000-cfg.startMs)/60000>maxMin) continue;     // 근무 상한(귀가 포함)은 후보에만
+  if(b.cand&&b._end>lastMand&&(b._end+home[i].m*60000-cfg.startMs)/60000>maxMin) continue;     // 근무 상한은 후보에만 — 수락 예약 사이에 끼는 후보는 자르지 않음
   if(cnt[i]===0){
    const d0=cfg.startG?bkTravel_(cfg.startG,b._f,startH,liveStart):{m:0,km:0};
    const arr=cfg.startMs+d0.m*60000, need=b._s-(lead+err)*60000, late=arr>need;
@@ -2933,7 +2945,8 @@ function dpChain_(list,cfg){
    const arr=a._end+dd.m*60000, need=b._s-(lead+err)*60000, late=arr>need;
    if(late&&b.cand) continue;
    const wait=Math.max(0,(b._s-lead*60000-arr)/60000);
-   const v=dp[j].val+b.fare-(dd.m+lead+bkWaitCost_(wait)+b._ride)*TVh(b._s)-fuel(dd.km)-(late?1e6:0);   // 선도착 10분은 콜마다 (설계서 실효 공식)
+   const dEff=wait>=BK_DRIFT_GAP?Math.max(dd.m,BK_DRIFT_MIN):dd.m;   // 긴 빈 시간 뒤엔 다른 곳에 가 있다고 보고 공차 최소 25분
+   const v=dp[j].val+b.fare-(dEff+lead+bkWaitCost_(wait)+b._ride)*TVh(b._s)-fuel(dd.km)-(late?1e6:0);   // 선도착 10분은 콜마다 (설계서 실효 공식)
    if(!dp[i]||v>dp[i].val) dp[i]={val:v,prev:j,dead:dd.m,deadKm:dd.km,wait:Math.round(wait),late:late?Math.round((arr-need)/60000):0};
   }
  }
@@ -2958,13 +2971,13 @@ function dpChain_(list,cfg){
 // ── 연결 시간 계산: 콜 순서대로 [공차 + 선도착 + 짧은 대기 + 운행] (+ 귀가 설정 시) — 브릿지콜 판정용 ──
 function bkChainMin_(calls,cfg){
  const lead=cfg.lead??BK_LEAD, err=cfg.err??BK_ERR, useRet=cfg.ret!==false&&cfg.ret!==0;
- let pos=cfg.startG, t=cfg.startMs, tot=0, ok=true;
+ let pos=cfg.startG, t=cfg.startMs, tot=0, ok=true, lateAll=0;
  calls.forEach((c,i)=>{ const dd=pos?bkTravel_(pos,c._f,bkHour_(t),i===0&&cfg.live):{m:0,km:0};
-  const arr=t+dd.m*60000; if(arr>c._s-(lead+err)*60000&&c.cand) ok=false;
+  const arr=t+dd.m*60000; if(arr>c._s-(lead+err)*60000){ lateAll++; if(c.cand) ok=false; }
   const wait=i===0?0:Math.max(0,(c._s-lead*60000-arr)/60000);
-  tot+=dd.m+lead+bkWaitCost_(wait)+c._ride; pos=c._t; t=Math.max(c._end,arr+(lead+c._ride)*60000); });
+  tot+=(wait>=BK_DRIFT_GAP?Math.max(dd.m,BK_DRIFT_MIN):dd.m)+lead+bkWaitCost_(wait)+c._ride; pos=c._t; t=Math.max(c._end,arr+(lead+c._ride)*60000); });
  if(useRet&&cfg.homeG&&calls.length){ const l=calls[calls.length-1]; tot+=bkTravel_(l._t,cfg.homeG,bkHour_(l._end)).m; }
- return {min:tot,ok};
+ return {min:tot,ok,lateAll};
 }
 // 콜마다 연결 기여: 그 콜을 뺀 연결과 비교해 늘어난 시간·기여 시급, 다음 픽업 공차를 얼마나 줄였는지(브릿지)
 function bkMarginals_(r,cfg){
@@ -2980,6 +2993,18 @@ function bkMarginals_(r,cfg){
    bridge:saved>=10&&own<floor&&(dt<=0||rate>=floor*0.97)};   // 혼자선 4만 미만인데 다음 공차를 줄여 연결에 드는 콜
  });
  return r._marg;
+}
+// ── 빈 시간에 들어가는 후보: 연결의 i번째 자리(i=0 맨 앞, i=길이 맨 뒤)에 끼워 넣어도 앞뒤 예약에 늦지 않는 후보와 그 연결 기여 ──
+function bkGapFits_(chain,i,cands,cfg){
+ const base=bkChainMin_(chain,cfg), floor=cfg.floor||40000, a=i>0?chain[i-1]._end:cfg.startMs, b=i<chain.length?chain[i]._s:Infinity;
+ const ids=new Set(chain.map(c=>c.id)), out=[], miss=[];
+ cands.forEach(x=>{ if(ids.has(x.id)||!x._geo||!x.cand||x._s<=a||x._s>=b) return;
+  const ins=chain.slice(0,i).concat([x],chain.slice(i)), m=bkChainMin_(ins,cfg);
+  if(!m.ok||m.lateAll>base.lateAll){ miss.push(x); return; }
+  const dt=m.min-base.min, rate=dt>0?Math.round(x.fare/(dt/60)):Infinity, sr=bkStreetRate_(bkHour_(x._s));
+  out.push({c:x,dt:Math.round(dt),rate,sr,grade:!x.fare?'na':rate>=floor?'g':rate>=sr?'y':'r'}); });
+ out.sort((p,q)=>(q.rate===Infinity?1e9:q.rate)-(p.rate===Infinity?1e9:p.rate));
+ return {fits:out,miss};
 }
 // ── 하루 예상 매출: 예약 요금 + 빈 시간을 내 즉시콜 시급으로 채운 몫 ──
 //  win={startMs,endMs}: 근무 창(시작~시작+근무상한). 예약 사이 빈 시간은 bkWaitCost_와 같은 규칙으로 '쓸 수 있는 분'만,
@@ -3010,7 +3035,7 @@ function bkForecast_(r,win){
 //     이 조건을 만족하는 조합 중 예약 매출이 가장 큰 것 = 예약으로 선점할 몫
 //  2) 4만 조합이 하나도 없으면(좋은 콜을 이미 다른 기사가 가져간 사진 등): 하루 예상 매출(예약 + 빈 시간 즉시·임박)이 가장 큰 조합으로 대신하고 경고
 //  빈 시간은 그 시간대 '내 즉시콜 시급'으로 채운다고 보고 예상 매출에 더한다(선택에는 영향 없음 — 표시용).
-function bkPlanPick_(list,cfg){
+function bkPlanPickOnce_(list,cfg){
  const floor=cfg.floor||40000, S=[], seen=new Set();
  const win={startMs:cfg.startMs,endMs:cfg.winEnd||cfg.startMs+(cfg.maxMin||600)*60000};
  const add=r=>{ if(r&&r.calls&&r.calls.length){ const k=r.calls.map(c=>c.id).join(); if(!seen.has(k)){seen.add(k); r.fc=bkForecast_(r,win); S.push(r);} } return r; };
@@ -3029,8 +3054,93 @@ function bkPlanPick_(list,cfg){
  let pick,mode;
  if(good.length){ pick=good.reduce((a,b)=>b.rev>a.rev||(b.rev===a.rev&&b.effRate>a.effRate)?b:a); mode='floor'; }
  else { pick=pool.reduce((a,b)=>b.fc.total>a.fc.total+500||(Math.abs(b.fc.total-a.fc.total)<=500&&b.rev>a.rev)?b:a); mode='day'; }
+ // 빈 시간 채움: 고른 조합을 고정하고, 그 사이 빈 시간에 '그 시간 즉시콜보다 나은' 예약을 더 끼운다
+ //  (수락·선점한 예약 사이의 빈 시간은 4만이 아니라 즉시·임박콜과 경쟁 → 하루 예상 매출이 오를 때만 채택)
+ try{ const keep=new Set(pick.calls.map(c=>c.id)), orig={}; list.forEach(b=>orig[b.id]=b);
+  const L2=list.map(b=>keep.has(b.id)?{...(b._s!=null&&'_geo' in b?b:bkNode_(b)),cand:false}:b);
+  const r2=dpChain_(L2,{...cfg,tvf:h=>bkStreetRate_(h)});
+  if(r2&&r2.calls&&!r2.mandFail&&keep.size&&r2.calls.filter(c=>keep.has(c.id)).length===keep.size){
+   r2.calls.forEach(c=>{ const o=orig[c.id]; c.cand=o?o.cand:c.cand; if(!keep.has(c.id)) c._fill=true; });
+   r2.fc=bkForecast_(r2,win);
+   if(r2.calls.some(c=>c._fill)&&r2.fc.total>pick.fc.total+500){ r2.fillOf=pick; pick=r2; }
+  } }catch(e){}
  try{ const M=bkMarginals_(pick,cfg); pick.calls.forEach((c,i)=>{ c._marg=M[i]; }); }catch(e){}
- return {pick,maxRate,mode,all:S,fc:pick.fc,street:bkStreetTable_()};
+ return {pick,maxRate,mode,all:S,fc:pick.fc,street:bkStreetTable_(),cfg};
+}
+// 외딴 콜 찾기: 앞 콜 하차 → 이 콜 출발까지, 이 콜 하차 → 다음 콜 출발까지 둘 다 BK_LINK분 넘게 비면 '외딴 콜'
+//  (그날 첫 콜은 출근과 이어지므로 제외). 외딴 후보가 혼자서(공차 최소 25분 가정)도 4만/h 이상이면 강한 콜로 남긴다.
+function bkIsolated_(r,cfg){
+ const floor=cfg.floor||40000, lead=cfg.lead??BK_LEAD, err=cfg.err??BK_ERR, out=[];
+ const leave=c=>c._s-(lead+err+(c._dead||0))*60000;
+ r.calls.forEach((c,i)=>{ if(i===0) return;
+  const p=r.calls[i-1], n=r.calls[i+1];
+  const lp=(leave(c)-p._end)<=BK_LINK*60000, ln=!!n&&(leave(n)-c._end)<=BK_LINK*60000;
+  if(lp||ln) return;
+  const strong=c.fare>0&&c.fare/((Math.max(c._dead||0,BK_DRIFT_MIN)+lead+c._ride)/60)>=floor;
+  out.push({id:c.id,cand:c.cand,strong,c}); });
+ return out;
+}
+// 최종 선택: 한 번 고른 뒤 '외딴 약한 후보'가 끼어 있으면 빼고 다시 고른다 (최대 5번)
+function bkPlanPick_(list,cfg){
+ const banned=new Map(); let res=null;
+ for(let it=0;it<5;it++){
+  res=bkPlanPickOnce_(list.filter(b=>!banned.has(b.id)),cfg); if(!res) return null;
+  const iso=bkIsolated_(res.pick,cfg).filter(x=>x.cand&&!x.strong);
+  if(!iso.length) break;
+  iso.forEach(x=>banned.set(x.id,x.c));
+ }
+ if(res&&banned.size) res.isolated=[...banned.values()];
+ return res;
+}
+// ── 사진 비교: 같은 콜 알아보기 (인식 글자가 조금 달라도 — '서울 반포2동'·'반포2동', '인천공항 T1'·'인천공항T1') ──
+function bkNormPlace_(s){
+ let t=String(s||'').replace(/[()（）\[\]\s·.,]/g,'');
+ t=t.replace(/^(서울특별시|서울시|서울|경기도|경기|인천광역시|인천시)/,'');
+ t=t.replace(/^[가-힣]{1,4}(?:시|군)(?=[가-힣]{2,})/,'').replace(/^[가-힣]{1,3}구(?=[가-힣]{2,})/,'');
+ for(const k in BK_BJD) if(t===k) t=BK_BJD[k];
+ return t.toLowerCase();
+}
+function bkSameCall_(a,b){
+ if(!a||!b||a.d!==b.d||a.t!==b.t) return false;
+ if(bkNormPlace_(a.from)!==bkNormPlace_(b.from)||bkNormPlace_(a.to)!==bkNormPlace_(b.to)) return false;
+ return a.fare===b.fare||!a.fare||!b.fare||Math.abs(a.fare-b.fare)<=1000;
+}
+// ── 사진 묶음(한 번 카메라를 열어 찍은 것 / 사진첩에서 고른 것) 단위 비교 ──
+//  새 콜 · 이미 있던 콜(아직 목록에 남아 있음) · 이전엔 있었는데 이번 사진 범위 안에서 안 보이는 콜(다른 기사가 가져갔을 가능성 → 추천에서 뺌, 다시 찍히면 복귀)
+let bkBatch=null, bkLastBatch=null;
+function bkPickIds_(off){ try{ const C=bkPlanCtx_(off), B=bkPlanBest_(C); return B?B.PK.pick.calls.map(c=>({id:c.id,t:c.t,from:c.from,to:c.to,fare:c.fare,cand:!!c.cand})):[]; }catch(e){ return []; } }
+function bkBatchStart_(){
+ const before={}; [0,1,2].forEach(o=>{ const d=bkDayStr_(o); if(books.some(b=>b.d===d)) before[d]=bkPickIds_(o); });
+ bkBatch={at:Date.now(),last:Date.now(),seenIds:new Set(),newIds:[],sameIds:[],revived:[],mine:[],win:{},before,ended:false};
+}
+function bkBatchNote_(rec,existing){
+ if(!bkBatch||bkBatch.ended&&Date.now()-bkBatch.last>10*60000) bkBatchStart_();
+ bkBatch.ended=false; bkBatch.last=Date.now();
+ const b=existing||rec, ms=new Date(`${b.d}T${b.t}`).getTime();
+ if(!b.imm){ const w=bkBatch.win[b.d]||(bkBatch.win[b.d]={a:ms,b:ms,n:0}); w.a=Math.min(w.a,ms); w.b=Math.max(w.b,ms); w.n++; }
+ if(!existing){ bkBatch.newIds.push(rec.id); bkBatch.seenIds.add(rec.id); return; }
+ if(!existing.cand){ bkBatch.mine.push(existing.id); return; }
+ if(!bkBatch.seenIds.has(existing.id)){ bkBatch.sameIds.push(existing.id); bkBatch.seenIds.add(existing.id); }
+ existing.lastSeen=Date.now(); if(existing.gone){ delete existing.gone; bkBatch.revived.push(existing.id); }
+}
+function bkBatchEnd_(){
+ if(!bkBatch||bkBatch.ended) return bkLastBatch;
+ const B=bkBatch, gone=[];
+ // 이번 사진들이 덮은 시간 범위(날짜별, 3건 이상 찍힌 날만) 안에 있었던 후보 중 이번에 안 보인 것 → 사라짐
+ Object.entries(B.win).forEach(([d,w])=>{ if(w.n<3) return;
+  books.forEach(x=>{ if(x.d!==d||!x.cand||x.gone||x.imm||B.seenIds.has(x.id)) return;
+   const ms=new Date(`${x.d}T${x.t}`).getTime(); if(ms<w.a||ms>w.b) return;
+   if((x.seen||0)>=B.at) return; x.gone=Date.now(); gone.push(x.id); }); });
+ const days={};
+ [...new Set([...Object.keys(B.win),...Object.keys(B.before)])].forEach(d=>{ const off=[0,1,2].find(o=>bkDayStr_(o)===d); if(off==null) return;
+  const now=bkPickIds_(off), old=B.before[d]||[], oi=new Set(old.map(c=>c.id)), ni=new Set(now.map(c=>c.id));
+  days[d]={add:now.filter(c=>!oi.has(c.id)),rem:old.filter(c=>!ni.has(c.id)),now}; });
+ const brief=id=>{ const x=books.find(b=>b.id===id); return x?{id,d:x.d,t:x.t,from:x.from,to:x.to,fare:x.fare}:null; };
+ bkLastBatch={at:B.at,end:Date.now(),newN:B.newIds.length,sameN:B.sameIds.length,mineN:B.mine.length,revived:B.revived.map(brief).filter(Boolean),
+  gone:gone.map(brief).filter(Boolean),newIds:B.newIds.slice(),days};
+ B.ended=true;
+ try{ Store.set(KEY_BOOK,books); }catch(e){}
+ return bkLastBatch;
 }
 // ── 빈 시간에 즉시콜 기다릴 곳: 앞 하차지 A → (대기 지점) → 다음 픽업 B. 서울 격자(G)의 시간대별 예상 대기·콜 수 + 내 실측 ──
 function bkGapSpot_(A,B,fromMs,leaveMs){
@@ -3123,6 +3233,15 @@ function bkUpHist_(days){
  const since=Date.now()-(days||21)*86400000, h=new Array(24).fill(0); let ups=0;
  bkUpLog.forEach(x=>{ if(x.t>=since){ h[new Date(x.t).getHours()]+=x.n; ups++; } });
  return {h,ups,total:h.reduce((a,b)=>a+b,0)};
+}
+// ── 사진에 날짜가 안 찍혔을 때 그 콜의 날짜 ──
+//  출발임박 표시 → 오늘. 빈 시간의 「📷 예약콜 더 찍기」로 연 카메라(30분 이내) → 그 빈 시간의 날짜. 그 밖엔 지금 보고 있는 플랜 날짜.
+//  (이전: 무조건 오늘 → 내일 플랜의 빈 시간을 채우려고 찍은 콜이 오늘로 저장돼 추천에 안 나오던 버그)
+let bkGapCtx=null;
+function bkDefaultDay_(b){
+ if(b&&b.imm===true) return bkDayStr_(0);
+ if(bkGapCtx&&Date.now()-bkGapCtx.at<30*60000&&bkGapCtx.d) return bkGapCtx.d;
+ return bkDayStr_(Math.min(2,Math.max(0,(typeof planCfg!=='undefined'&&planCfg.day)|0)));
 }
 // ── 예약콜 등장 기록: 사진에서 처음 본 시각(seen)·마지막으로 다시 본 시각(last) — 좋은 콜이 언제 올라와 언제 사라지는지 ──
 //  JK: "좋은 콜은 베테랑들이 먼저 선점 → 중요 매출 예약콜이 어느 시간대에 올라오는지 기록으로 모아 확인"
@@ -3253,7 +3372,7 @@ function bkPlanCtx_(off){
  const T=(isToday&&typeof trips!=='undefined'&&Array.isArray(trips))?trips:[];
  const doneT={}; T.forEach(t=>{ if(t.bookId&&t.end) doneT[t.bookId]=t; });
  const runT=T.find(t=>t.bookId&&!t.end)||null;
- const all=books.filter(b=>b.d===day).map(bkNode_);
+ const all=books.filter(b=>b.d===day&&!b.gone).map(bkNode_);   // 사진 비교로 '사라짐' 처리된 후보는 계산에서 뺌
  const nodes=all.filter(b=>!doneT[b.id]);
  const acc=nodes.filter(b=>!b.cand);
  const homeG=planCfg.home?bkGeo_(planCfg.home):null;
@@ -3340,46 +3459,68 @@ function renderPlan_(){
  const icn=(A,nextF)=>A&&/인천공항/.test(A.n||'')&&!(nextF&&/인천공항/.test(nextF.n||''))?
   `<div class="mt" style="color:var(--amber)">✈ 인천공항 하차 — 공항 출발(입국) 예약콜을 찍어 올리면 서울행 빈 귀로(약 ${bkTravel_(A,nextF||C.homeG,12).m}분)를 매출로 바꿀 수 있습니다. 공항 즉시콜 대기는 3~5시간이라 비추천</div>`:'';
  const spotTxt=sp=>sp?`<div class="mt">📍 대기 추천: <b>${bkEsc_(sp.n)}</b>(${bkEsc_(sp.g)}) — 이동 ${sp.mA}분 · 예상 대기 ${sp.w}분${sp.p!=null?` · 시간당 콜 ${sp.p}건`:''} · 다음 픽업까지 ${sp.mB}분</div>`:'';
- const gapRow=(fromMs,c,A)=>{
+ // 이 빈 시간에 들어가는 후보(찍은 콜) — 추천에 안 들어갔어도 보여주고 이유를 붙인다
+ const candN=C.nodes.filter(b=>b.cand&&b._geo);
+ const GL={g:['4만↑','occ'],y:['즉시콜보다 나음','amber'],r:['즉시콜보다 못함','vac'],na:['요금 미상','dim']};
+ const fitsHtml=(i)=>{ let F; try{ F=bkGapFits_(r.calls,i,candN,PK.cfg); }catch(e){ return ''; }
+  if(!F.fits.length) return F.miss.length?`<div class="mt">🧩 찍은 후보 중 이 시간대 ${F.miss.length}건은 앞뒤 예약 시간에 못 맞춥니다 (공차·선도착 포함)</div>`:'';
+  return `<div class="gfits"><div class="mt">🧩 이 빈 시간에 들어가는 후보 ${F.fits.length}건 (연결 기여순)</div>`+F.fits.slice(0,3).map(f=>{ const [lb,cl]=GL[f.grade]||GL.na;
+   return `<div class="gfit" style="border-left-color:var(--${cl})"><div class="gft">${bkIsNew_(f.c)?'<span class="pnew">🆕</span> ':''}${f.c.t} ${bkEsc_(f.c.from)} → ${bkEsc_(f.c.to)} · <b>${f.c.fare?fmt(f.c.fare):'요금?'}</b></div>`+
+    `<div class="mt">연결 기여 <b style="color:var(--${cl})">${f.rate===Infinity?'시간 추가 없음':fmt(f.rate)+'/h'}</b> · ${lb}${f.rate!==Infinity?` · +${f.dt}분`:''}${PK.isolated&&PK.isolated.some(x=>x.id===f.c.id)?' · 🏝 외딴 콜(앞뒤와 안 이어짐)':''}</div>`+
+    `<button class="pacc" data-bkacc="${f.c.id}">수락함</button></div>`; }).join('')+(F.fits.length>3?`<div class="mt">… 외 ${F.fits.length-3}건 (아래 후보 목록)</div>`:'')+`</div>`; };
+ const gapRow=(fromMs,c,A,gi)=>{
   const leave=c._s-(BK_LEAD+BK_ERR+c._dead)*60000, free=Math.round((leave-fromMs)/60000);
   if(free<3) return '';
   if(free<20) return `<div class="gaprow">⏳ ${free}분 여유 — ${bkEsc_(c.from)}로 이동해 대기 (콜 받지 않기)</div>`;
   const until=fromMs+Math.floor(free/2)*60000, sg=segAt(fromMs), est=sg?Math.round(sg.won/100)*100:0;
   const sp=bkGapSpot_(A,c._f,fromMs,leave);
   const head=`<div class="gaprow ok"><div>⏳ ${bkHM_(fromMs)}~${bkHM_(leave)} · <b>${free}분 빈 시간</b> — 다음 ${c.t} ${bkEsc_(c.from)}${est?` · 채우면 약 <b>${fmt(est)}원</b>`:''}</div>`+icn(A,c._f)+spotTxt(sp);
-  if(!C.isToday) return head+`<div class="gapact"><button data-gapcam="1">📷 이 시간대 예약콜 더 찍기</button></div>`+
+  const gd=`data-gapd="${C.day}" data-gapa="${fromMs}" data-gapb="${leave}"`, fh=gi!=null?fitsHtml(gi):'';
+  if(!C.isToday) return head+fh+`<div class="gapact"><button data-gapcam="1" ${gd}>📷 이 시간대 예약콜 더 찍기</button></div>`+
    `<div class="mt">당일엔 여기서 출발임박콜 사진 판정 · ⚡ 즉시콜(마감 ${bkHM_(until)}) 버튼이 뜹니다</div></div>`;
-  return head+`<div class="gapact"><button data-gapcam="1">📷 임박콜 찍기 (우선)</button>`+
+  return head+fh+`<div class="gapact"><button data-gapcam="1" ${gd}>📷 임박콜 찍기 (우선)</button>`+
    `<button data-gapnow="${until}" data-gapnext="${c.t} ${bkEsc_(c.from)}">⚡ 즉시콜 (${bkHM_(until)}까지 하차)</button></div></div>`; };
  r.calls.forEach((c,i)=>{
-  if(i>0) h+=gapRow(r.calls[i-1]._end,c,r.calls[i-1]._t);
-  else if(C.isToday&&!off) h+=gapRow(C.startMs,c,C.startG);
+  if(i>0) h+=gapRow(r.calls[i-1]._end,c,r.calls[i-1]._t,i);
+  else if(C.isToday&&!off) h+=gapRow(C.startMs,c,C.startG,0);
   const home=/다산/.test(c.to||'');
   const tag=c.cand?`<button class="pacc" data-bkacc="${c.id}">수락함</button>`:'<span class="pok">수락</span>';
   const sr=bkStreetRate_(bkHour_(c._s)), cr=c.fare?Math.round(c.fare/(c._dead+BK_LEAD+c._ride)*60):0;
   h+=`<div class="row${c._late?' late':''}${c.cand?' rec':''}"><div class="tt"><span class="sn">${i+1}</span>${c.t}</div><div class="bb">`+
-   `<div>${bkEsc_(c.from)} → ${bkEsc_(c.to)} · <b style="color:var(--amber)">${c.fare?fmt(c.fare)+'원':'요금 미상'}</b>${home?' 🏠':''}${c.imm?' <span class="pimm">임박</span>':''}</div>`+
+   `<div>${bkEsc_(c.from)} → ${bkEsc_(c.to)} · <b style="color:var(--amber)">${c.fare?fmt(c.fare)+'원':'요금 미상'}</b>${home?' 🏠':''}${c.imm?' <span class="pimm">임박</span>':''}${c._fill?' <span class="pfill">빈 시간 채움</span>':''}${bkIsNew_(c)?' <span class="pnew">🆕</span>':''}</div>`+
    `<div class="mt">공차 ${c._dead}분(${(c._deadKm||0).toFixed(1)}km) 이동 → ${bkHM_(c._s-(BK_LEAD+(c._wait||0))*60000)} 도착 · 운행 ~${c._ride}분 · 하차 ~${bkHM_(c._end)}`+
    (cr?` · 단독 실효 ${fmt(cr)}/h`:'')+`</div>`+
    (c._marg&&c.fare?`<div class="mt">연결 기여 <b style="color:var(--${c._marg.rate>=floor?'occ':c._marg.rate>=sr?'amber':'vac'})">${c._marg.rate===Infinity?'시간 추가 없음':fmt(c._marg.rate)+'/h'}</b>`+
-    `${c._marg.rate!==Infinity?` (이 콜로 늘어난 시간 ${c._marg.dt}분)`:''}${c._marg.bridge?` · <span class="pbridge">🔗 브릿지 — 다음 픽업 공차 −${c._marg.saved}분</span>`:''}</div>`:'')+
+    `${c._marg.rate!==Infinity?` (이 콜로 늘어난 시간 ${c._marg.dt}분)`:''}${c._marg.bridge&&c.cand?` · <span class="pbridge">🔗 브릿지 — 다음 픽업 공차 −${c._marg.saved}분</span>`:''}</div>`:'')+
    (c._late?`<div class="mt" style="color:var(--vac)">⚠ 앞 예약에서 오면 선도착에 ${c._late}분 부족 — 수락한 예약끼리 빠듯합니다</div>`:'')+
    `</div>${tag}</div>`;
  });
  // 마지막 하차 뒤: 하차지 자유 → 근무 끝까지 즉시·임박콜
  const last=r.calls[r.calls.length-1], tail=fc.seg.find(x=>x.tail);
  if(tail&&tail.m>=10){ const sp=bkGapSpot_(last._t,last._t,tail.a,tail.a+Math.min(tail.m,90)*60000);
-  h+=`<div class="gaprow ok"><div>🏁 ${bkHM_(tail.a)}~${bkHM_(tail.b)} · <b>${tail.m}분</b> 근무 끝까지 — 즉시·임박콜로 약 <b>${fmt(Math.round(tail.won/100)*100)}원</b> 예상</div>`+icn(last._t,null)+spotTxt(sp)+
-   (C.isToday?`<div class="gapact"><button data-gapcam="1">📷 임박콜 찍기 (우선)</button><button data-gapnow="${tail.b}" data-gapnext="근무 끝">⚡ 즉시콜</button></div>`:'')+`</div>`; }
+  h+=`<div class="gaprow ok"><div>🏁 ${bkHM_(tail.a)}~${bkHM_(tail.b)} · <b>${tail.m}분</b> 근무 끝까지 — 즉시·임박콜로 약 <b>${fmt(Math.round(tail.won/100)*100)}원</b> 예상</div>`+icn(last._t,null)+spotTxt(sp)+fitsHtml(r.calls.length)+
+   (C.isToday?`<div class="gapact"><button data-gapcam="1" data-gapd="${C.day}" data-gapa="${tail.a}" data-gapb="${tail.b}">📷 임박콜 찍기 (우선)</button><button data-gapnow="${tail.b}" data-gapnext="근무 끝">⚡ 즉시콜</button></div>`:`<div class="gapact"><button data-gapcam="1" data-gapd="${C.day}" data-gapa="${tail.a}" data-gapb="${tail.b}">📷 이 시간대 예약콜 더 찍기</button></div>`)+`</div>`; }
  tl.innerHTML=h;
  // 적극 제안
  let u='';
  const recN=r.calls.filter(c=>c.cand).length, ST=PK.street;
+ // 📸 마지막 사진 묶음 비교 (새 콜 · 이미 있던 콜 · 사라진 콜 → 이 날 추천이 어떻게 바뀌었나)
+ { const LB=bkLastBatch; if(LB&&Date.now()-LB.end<6*3600000){
+   const D=LB.days&&LB.days[C.day], li=x=>`${x.t} ${bkEsc_(x.from)}→${bkEsc_(x.to)}${x.fare?' '+fmt(x.fare):''}`;
+   const gD=LB.gone.filter(x=>x.d===C.day), rv=LB.revived.filter(x=>x.d===C.day);
+   u+=`<div class="pup go">📸 ${bkHM_(LB.end)} 사진 비교 — 새 콜 <b>${LB.newN}</b>건 · 이미 있던 콜 <b>${LB.sameN}</b>건(아직 남아 있음)`+
+    (LB.gone.length?` · 사라진 콜 <b>${LB.gone.length}</b>건(다른 기사가 수락한 듯 → 추천에서 뺌)`:'')+(LB.mineN?` · 내 수락 예약 ${LB.mineN}건`:'')+
+    (rv.length?` · 다시 보인 콜 ${rv.length}건`:'')+
+    (D?(D.add.length||D.rem.length?`<div class="pdiff">이 날 추천 변경: ${D.add.map(x=>'＋'+li(x)).concat(D.rem.map(x=>'－'+li(x))).join(' · ')}</div>`:`<div class="pdiff">이 날 추천은 그대로 유효합니다</div>`):'')+
+    (gD.length?`<div class="pdiff">안 보인 콜: ${gD.slice(0,3).map(li).join(' · ')}${gD.length>3?` 외 ${gD.length-3}건`:''}</div>`:'')+`</div>`; } }
+ if(PK.isolated&&PK.isolated.length) u+=`<div class="pup">🏝 외딴 후보 ${PK.isolated.length}건 제외: ${PK.isolated.slice(0,3).map(c=>c.t+' '+bkEsc_(c.from)+' '+fmt(c.fare)).join(', ')} — 앞뒤 예약과 ${BK_LINK}분 넘게 떨어져 있고 혼자선 4만/h 미만입니다. 긴 빈 시간엔 즉시콜로 다른 동네에 가 있으므로, 앞뒤로 바로 이어지는 예약이 생기면 다시 추천합니다</div>`;
  if(C.early) u+=`<div class="pup go">⏱ ${C.early.b.t} ${bkEsc_(C.early.b.from)} 예약을 예정보다 <b>${C.early.mins}분 일찍</b> 마쳤습니다 — 지금 위치·시각에서 다시 짠 연결입니다. 아래 빈 시간은 임박콜 사진이나 즉시콜로 채우세요</div>`;
  if(recN) u+=`<div class="pup go">✓ 추천 연결 ${r.calls.length}콜 중 <b>${recN}콜</b>이 아직 후보입니다 — 카카오T에서 순서대로 수락한 뒤 <b>수락함</b>을 누르세요`+
    (recN>1?` <button class="pacc all" data-bkaccall="1">추천 ${recN}콜 모두 수락함</button>`:'')+`</div>`;
  if(PK.mode==='floor') u+=`<div class="pup">기준: 예약 연결의 <b>총시간당 ${fmt(floor)}원 이상</b>(베테랑 기준) 조합 중 <b>예약 매출이 가장 큰 것</b>을 선점합니다. 빈 시간은 임박콜(우선)·즉시콜로 채우며, 예상치는 그 시간대 내 즉시콜 시급(기록 ${ST.n}건, 평균 ${fmt(ST.avg)}원/h)으로 계산했습니다</div>`;
+ else if(C.acc.some(b=>b._s>=C.startMs)) u+=`<div class="pup warn">⚠ 수락한 예약을 포함하면 <b>총시간당 ${fmt(floor)}원</b>을 넘는 조합이 없어, 수락 예약은 그대로 두고 빈 시간을 <b>즉시콜보다 나은 예약</b>으로 채워 하루 예상 매출이 가장 큰 조합을 보여드립니다. 더 좋은 예약이 올라오면 바꿔 끼웁니다</div>`;
  else u+=`<div class="pup warn">⚠ 올린 후보로는 <b>총시간당 ${fmt(floor)}원 이상</b> 되는 예약 연결이 없습니다 — 좋은 콜을 이미 다른 기사가 가져갔을 수 있습니다. 하루 예상 매출이 가장 큰 조합을 임시로 보여드립니다. 예약 사진을 자주 업데이트하세요</div>`;
+ if(r.fillOf){ const fl=r.calls.filter(c=>c._fill); u+=`<div class="pup go">🧩 빈 시간 채움 ${fl.length}콜 추가 (${fl.map(c=>c.t+' '+bkEsc_(c.from)).join(', ')}) — 4만/h 미만이지만 그 시간 즉시콜보다 나아 하루 예상 매출 <b>+${fmt(fc.total-r.fillOf.fc.total)}원</b></div>`; }
  if(BEST.ext) u+=`<div class="pup">⏱ ${planCfg.cap||10}시간으로는 예약 ${fmt(BEST.P10.pick.rev)}원 → <b>${BEST.base.capH}시간으로 늘려 ${fmt(r.rev)}원</b>(+${fmt(r.rev-BEST.P10.pick.rev)}) 선점 플랜입니다</div>`;
  { const T=bkPostTimes_(); if(resv<goal&&T&&T.top.length) u+=`<div class="pup">📸 좋은 예약콜(4만↑)이 주로 처음 보인 시각: <b>${T.top.map(x=>x.h+'시').join('·')}</b> (기록 ${T.n}건) — 이 시각에 사진을 다시 올리면 선점 기회가 큽니다</div>`; }
  if(r.mandFail) u+=`<div class="pup warn">⚠ 수락한 예약끼리 시간이 맞지 않아, 수락 여부와 상관없이 최적 조합을 보여드립니다</div>`;
@@ -3406,6 +3547,8 @@ function renderPlan_(){
  renderCand_(C,r); renderBkUp_();
 }
 
+// 🆕 마지막 사진 묶음에서 처음 보인 콜
+function bkIsNew_(c){ return !!(bkLastBatch&&c&&c.seen&&c.seen>=bkLastBatch.at&&Date.now()-bkLastBatch.end<6*3600000); }
 // 후보 콜 목록 (시간순, 추천 연결 기준 판정) — 수락 전 예약콜
 const BK_GCLS={g:'good',y:'warn',r:'bad',x:'bad',na:'warn'};
 // 콜 카드 1장 (프로토타입 「공차 예약콜 분석」 카드와 같은 정보: 경로·임박 배지·시각/인원 | 요금·공차·운행·실효·판정)
@@ -3414,7 +3557,7 @@ function bkCard_(c,rt,o){
  const lab=rt.grade==='na'?`확인필요 (${rt.why||'위치'})`:rt.grade==='x'?(rt.why||(rt.inLate?`픽업 ${rt.inLate}분 늦음`:`다음 예약 ${rt.outLate}분 늦음`)):({g:'잡기 좋음',y:'즉시콜보다 나음',r:'즉시콜보다 못함'}[rt.grade]+(rt.why?' · '+rt.why:''));
  const km=x=>x!=null?x.toFixed(1):'–';
  return `<div class="cd r-${cls}${o.inPlan?' inplan':''}${o.fresh?' fresh':''}">`+
-  `<div class="top"><div class="route">${bkEsc_(c.from)}<span class="arr"> → </span>${bkEsc_(c.to)}${c.imm?'<span class="badge imm">출발임박</span>':''}</div>`+
+  `<div class="top"><div class="route">${bkIsNew_(c)?'<span class="pnew">🆕 새로 보임</span> ':''}${bkEsc_(c.from)}<span class="arr"> → </span>${bkEsc_(c.to)}${c.imm?'<span class="badge imm">출발임박</span>':''}</div>`+
   `<div class="time">${o.showDay?c.d.slice(5).replace('-','.')+' ':''}${c.t}${c.pax?' · '+c.pax+'명':''}</div></div>`+
   `<div class="metrics"><span class="m">요금 <b>${c.fare?fmt(c.fare):'미표시'}</b></span>`+
   `<span class="m">공차 <b>${rt.grade==='na'||rt.noOrigin?'–':km(rt.deadKm)+'km/'+rt.dead+'분'}</b></span>`+
@@ -3429,7 +3572,8 @@ function bkRateCtx_(c,accAll,now){ const isT=c.d===bkDayStr_(0);
 function renderCand_(C,r){
  const box=document.getElementById('cand_list'), sec=document.getElementById('cand_sec'); if(!box||!sec) return;
  const now=Date.now();
- const cands=books.filter(b=>b.cand&&bkStart(b)>now-10*60000).map(bkNode_);
+ const goneN=books.filter(b=>b.cand&&b.gone&&bkStart(b)>now-10*60000).length;
+ const cands=books.filter(b=>b.cand&&!b.gone&&bkStart(b)>now-10*60000).map(bkNode_);
  sec.hidden=cands.length===0;
  document.getElementById('cand_cnt').textContent=cands.length?`${cands.length}건`:'';
  if(!cands.length){ box.innerHTML=''; return; }
@@ -3452,7 +3596,8 @@ function renderCand_(C,r){
  let lastD='';
  box.innerHTML=show.map(({c,rt})=>{ const hd=c.d!==lastD?`<div class="cday">${c.d.slice(5).replace('-','.')} ${['일','월','화','수','목','금','토'][new Date(c.d+'T00:00').getDay()]}요일</div>`:''; lastD=c.d;
    return hd+bkCard_(c,rt,{inPlan:inPlan.has(c.id),step:inPlan.has(c.id)?chain.findIndex(x=>x.id===c.id)+1:0}); }).join('')+
-  (rows.length>8&&!box.dataset.all?`<button class="opt" id="cand_more" style="width:100%;margin-top:6px">후보 ${rows.length-8}건 더 보기</button>`:'');
+  (rows.length>8&&!box.dataset.all?`<button class="opt" id="cand_more" style="width:100%;margin-top:6px">후보 ${rows.length-8}건 더 보기</button>`:'')+
+  (goneN?`<div class="mt" style="margin-top:6px">👻 최근 사진에서 안 보인 후보 ${goneN}건은 숨겼습니다(다른 기사가 수락한 것으로 봄) — 다시 찍히면 자동으로 돌아옵니다</div>`:'');
  const more=document.getElementById('cand_more'); if(more) more.onclick=()=>{box.dataset.all='1'; renderCand_(C,r);};
 }
 // 요약 타일 (프로토타입: 콜 수 · 목표 이상 · 평균 실효시급 · 최고 콜)
@@ -3529,7 +3674,8 @@ if($('pc_home')){ const hv=($('pc_home').value||'').trim();
    const all=e.target.closest('[data-bkaccall]'), gc=e.target.closest('[data-gapcam]'), gn=e.target.closest('[data-gapnow]');
    if(all){ const C=bkPlanCtx_(Math.min(2,planCfg.day|0)), BB=bkPlanBest_(C), PK=BB&&BB.PK;
      if(PK&&PK.pick){ PK.pick.calls.forEach(c=>{ const b=books.find(x=>x.id===c.id); if(b) delete b.cand; }); await Store.set(KEY_BOOK,books); renderBook(); } return; }
-   if(gc){ if(typeof bkCamSupported_==='function'&&bkCamSupported_()&&document.getElementById('cam_ov')) bkCamOpen_(); else { const cap=document.getElementById('bk_cap'); if(cap) cap.click(); } return; }
+   if(gc){ bkGapCtx=gc.dataset.gapd?{d:gc.dataset.gapd,a:+gc.dataset.gapa||0,b:+gc.dataset.gapb||0,at:Date.now()}:null;
+     if(typeof bkCamSupported_==='function'&&bkCamSupported_()&&document.getElementById('cam_ov')) bkCamOpen_(); else { const cap=document.getElementById('bk_cap'); if(cap) cap.click(); } return; }
    if(gn){ bkGapNow_(+gn.dataset.gapnow,gn.dataset.gapnext); return; }
    if(a){ const b=books.find(x=>x.id===a.dataset.bkacc); if(b){ delete b.cand; await Store.set(KEY_BOOK,books); renderBook(); } }
    else if(d){ books=books.filter(x=>x.id!==d.dataset.bkdel); await Store.set(KEY_BOOK,books); renderBook(); }
@@ -3591,13 +3737,16 @@ async function bkShrink_(file){
 }
 // 분석 대기열
 const bkQ={items:[],running:0,shot:0,done:0,found:0,added:0,dup:0,fail:0,waiting:0,lastErr:'',ids:[],bytesIn:0,bytesOut:0,onUpdate:null};
-function bkQReset_(){ Object.assign(bkQ,{items:[],shot:0,done:0,found:0,added:0,dup:0,fail:0,lastErr:'',ids:[],bytesIn:0,bytesOut:0}); }
+function bkQReset_(){ Object.assign(bkQ,{items:[],shot:0,done:0,found:0,added:0,dup:0,fail:0,lastErr:'',ids:[],bytesIn:0,bytesOut:0}); try{ bkBatchStart_(); }catch(e){} }
 function bkQNotify_(){ try{ bkQ.onUpdate&&bkQ.onUpdate(); }catch(e){} }
 function bkEnqueue_(blob){ bkQ.items.push(blob); bkQ.shot++; bkQNotify_(); bkPump_(); }
+let _bkBE=null;
 function bkPump_(){
  while(bkQ.running<BK_CONC&&bkQ.items.length){
   const b=bkQ.items.shift(); bkQ.running++;
-  bkRunOne_(b,0).finally(()=>{ bkQ.running--; bkQNotify_(); bkPump_(); });
+  bkRunOne_(b,0).finally(()=>{ bkQ.running--; bkQNotify_(); bkPump_();
+   // 대기열이 비면(1.5초 더 기다려 연속 촬영이 끝났는지 확인) 이번 묶음 비교 → 플랜 다시 계산
+   if(!bkQ.items.length&&!bkQ.running){ clearTimeout(_bkBE); _bkBE=setTimeout(()=>{ if(!bkQ.items.length&&!bkQ.running){ try{ bkBatchEnd_(); }catch(e){} bkCamPK.k=''; bkRenderSoon_(0); bkQNotify_(); } },1500); } });
  }
 }
 async function bkRunOne_(blob,tries){
@@ -3642,6 +3791,7 @@ function bkCamClose_(silent){
  try{ _bkStream&&_bkStream.getTracks().forEach(t=>t.stop()); }catch(e){} _bkStream=null;
  const ov=$('cam_ov'); if(ov) ov.hidden=true; document.body.classList.remove('camlock');
  bkQ.onUpdate=bkOcrBoxPaint_;
+ if(!bkQ.items.length&&!bkQ.running){ try{ bkBatchEnd_(); }catch(e){} }
  if(!silent){ bkRenderSoon_(0); bkOcrBoxPaint_(); }
 }
 async function bkCamShot_(){
@@ -3663,25 +3813,39 @@ let bkCamPK={k:'',v:null};
 function bkCamChain_(day){
  const t0=new Date(bkDayStr_(0)+'T00:00'), off=Math.round((new Date(day+'T00:00')-t0)/86400000);
  if(off<0) return null;
- const k=day+'|'+books.length+'|'+books.filter(b=>!b.cand).length+'|'+bkQ.done;
+ const k=day+'|'+books.length+'|'+books.filter(b=>!b.cand).length+'|'+books.filter(b=>b.gone).length+'|'+bkQ.done;
  if(bkCamPK.k===k) return bkCamPK.v;
  const C=bkPlanCtx_(off), BB=bkPlanBest_(C), PK=BB&&BB.PK;
- const v=PK&&PK.pick?{C,r:PK.pick}:null; bkCamPK={k,v}; return v;
+ const v=PK&&PK.pick?{C,r:PK.pick,cfg:PK.cfg}:null; bkCamPK={k,v}; return v;
 }
 function bkCamPaint_(){
  const $=id=>document.getElementById(id); if(!$('cam_stat')) return;
  const busy=bkQ.items.length+bkQ.running;
  $('cam_stat').textContent=`촬영 ${bkQ.shot} · 분석 ${bkQ.done}${busy?` (+${busy} 처리중)`:''} · 새 콜 ${bkQ.added}`+(bkQ.dup?` · 중복 ${bkQ.dup}`:'')+(bkQ.waiting?' · 한도 대기':'')+(bkQ.fail?` · 실패 ${bkQ.fail}`:'');
- const got=bkQ.ids.map(id=>books.find(b=>b.id===id)).filter(Boolean).map(bkNode_);
- if(!got.length){ $('cam_res').innerHTML=`<div class="camhint">${bkQ.shot?(busy?'분석 중… (사진 1장 2~5초)':bkQ.fail&&!bkQ.done?'분석 실패: '+bkEsc_(bkQ.lastErr.slice(0,80)):'인식된 콜이 없습니다 — 화면이 잘 보이게 다시 찍어보세요'):'셔터를 누르면 여기에 추천 연결(1→2→3…)이 바로 뜹니다'}</div>`; return; }
+ // 이번에 새로 들어온 콜 + 이미 있던 콜을 다시 찍은 것 (예전: 새 콜만 → 다 이미 있던 콜이면 '인식된 콜 없음'으로 잘못 표시)
+ const bIds=[...new Set([...(bkQ.ids||[]),...(bkBatch?bkBatch.sameIds:[])])];
+ const got=bIds.map(id=>books.find(b=>b.id===id)).filter(b=>b&&!b.gone).map(bkNode_);
+ const cmp=bkBatch?`<div class="camsum">📊 이번 사진: 새 콜 <b>${bkBatch.newIds.length}</b> · 이미 있던 콜 <b>${bkBatch.sameIds.length}</b>${bkBatch.mine.length?` · 내 수락 예약 ${bkBatch.mine.length}`:''}${bkBatch.ended&&bkLastBatch&&bkLastBatch.gone.length?` · 사라진 콜 <b>${bkLastBatch.gone.length}</b>(추천에서 뺌)`:''}</div>`:'';
+ if(!got.length){ $('cam_res').innerHTML=cmp+`<div class="camhint">${bkQ.shot?(busy?'분석 중… (사진 1장 2~5초)':bkQ.fail&&!bkQ.done?'분석 실패: '+bkEsc_(bkQ.lastErr.slice(0,80)):'인식된 콜이 없습니다 — 화면이 잘 보이게 다시 찍어보세요'):'셔터를 누르면 여기에 추천 연결(1→2→3…)이 바로 뜹니다'}</div>`; return; }
  // 찍은 콜이 가장 많은 날(같으면 이른 날)을 기준으로 연결을 짠다
  const cnt={}; got.forEach(c=>cnt[c.d]=(cnt[c.d]||0)+1);
- const day=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||a.localeCompare(b))[0];
+ const gx=bkGapCtx&&Date.now()-bkGapCtx.at<30*60000?bkGapCtx:null;
+ const day=gx&&cnt[gx.d]?gx.d:Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||a.localeCompare(b))[0];
  const P=bkCamChain_(day), chain=P?P.r.calls:[], fl=planCfg.floor||40000;
  const dl=d=>d!==bkDayStr_(0)?d.slice(5).replace('-','.')+' ':'';
  const row=(c,col,lab,sub,btn)=>`<div class="camrow" style="border-left-color:var(--${col})"><div class="cr1"><b style="color:var(--${col})">${lab}</b> `+
   `<span>${dl(c.d)}${c.t} ${bkEsc_(c.from)} → ${bkEsc_(c.to)}</span><b class="cf">${c.fare?fmt(c.fare):'요금?'}</b></div><div class="cr2">${sub}</div>${btn}</div>`;
- let h='';
+ let h=cmp;
+ // 빈 시간에서 연 카메라: 그 빈 시간에 들어가는 콜을 맨 위에 (연결 기여순)
+ if(gx&&gx.d===day&&P){
+  const i=gx.b?P.r.calls.findIndex(c=>c._s>=gx.b):-1, pos=i<0?P.r.calls.length:i;
+  let F=null; try{ F=bkGapFits_(P.r.calls,pos,P.C.nodes.filter(b=>b.cand&&b._geo),P.cfg); }catch(e){}
+  const GL={g:['4만↑','occ'],y:['즉시콜보다 나음','amber'],r:['즉시콜보다 못함','vac'],na:['요금 미상','dim']};
+  h+=`<div class="camsum">🧩 빈 시간 ${gx.a?bkHM_(gx.a):''}~${gx.b?bkHM_(gx.b):''}에 넣을 수 있는 콜 <b>${F?F.fits.length:0}건</b></div>`;
+  if(F&&F.fits.length) F.fits.slice(0,4).forEach(f=>{ const [lb,cl]=GL[f.grade]||GL.na;
+   h+=row(f.c,cl,'빈 시간',`연결 기여 ${f.rate===Infinity?'시간 추가 없음':fmt(f.rate)+'/h'} · ${lb}${f.rate!==Infinity?` · +${f.dt}분`:''}`,f.c.cand?`<button data-camacc="${f.c.id}">수락함</button>`:'<span class="cok">수락됨</span>'); });
+  else h+=`<div class="camhint">${F&&F.miss.length?`찍은 콜 ${F.miss.length}건은 앞뒤 예약 시간에 못 맞춥니다`:'아직 이 빈 시간에 맞는 콜이 없습니다 — 계속 찍어 주세요'}</div>`;
+ }
  if(chain.length){
   const recN=chain.filter(c=>c.cand).length;
   h+=`<div class="camsum">${dl(day)||'오늘 '}추천 연결 <b>${chain.length}콜</b> · 매출 <b>${fmt(P.r.rev)}</b> · 총시간당 <b style="color:var(--${P.r.effRate>=fl?'occ':'amber'})">${fmt(Math.round(P.r.effRate))}</b>/h`+
@@ -3724,7 +3888,7 @@ function initCam_(){
  const legacy=btn.onclick;                       // 기존: 직접기입 폼 열기 + 사진 선택창
  const manual=()=>{ bkManual=true; const f=$('bk_form'); if(f) f.hidden=false; if($('bk_dur')&&!$('bk_dur').value) $('bk_dur').value=60;
    try{ f.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){} };
- btn.onclick=()=>{ if(bkCamSupported_()&&$('cam_ov')) bkCamOpen_(); else if(legacy) legacy(); };
+ btn.onclick=()=>{ bkGapCtx=null; if(bkCamSupported_()&&$('cam_ov')) bkCamOpen_(); else if(legacy) legacy(); };
  if($('cam_close')) $('cam_close').onclick=()=>bkCamClose_();
  if($('cam_shot')) $('cam_shot').onclick=()=>bkCamShot_();
  if($('cam_gal')) $('cam_gal').onclick=()=>{ bkCamClose_(true); manual(); $('bk_file').click(); };
@@ -3994,13 +4158,17 @@ async function bkSaveCands_(arr){
  const hm=t=>{const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?m[1].padStart(2,'0')+':'+m[2]:'';};
  for(const b of arr){ const t=hm(b&&b.t); if(!t||!(b.from||b.to)) continue;
   const rec={id:'b'+Date.now()+Math.random().toString(36).slice(2,6),
-    d:/^\d{4}-\d{2}-\d{2}$/.test(b.d||'')?b.d:bkDayStr_(0),t,
+    d:/^\d{4}-\d{2}-\d{2}$/.test(b.d||'')?b.d:bkDefaultDay_(b),t,
     from:String(b.from||'').trim(),to:String(b.to||'').trim(),name:String(b.name||'').trim(),
     tel:String(b.tel||'').trim(),email:String(b.email||'').trim(),pax:+b.pax||0,bag:0,
     dur:60,fare:+b.fare||0,peak:+b.peak||0,memo:b.via?('경유지 '+b.via+'개'):'',cand:true};
   if(b.imm===true) rec.imm=true;
-  const k=key(rec); try{ bkSeen_(rec,!seen.has(k)); }catch(e){}            // 등장 기록(처음 본 시각·다시 본 시각)
-  if(seen.has(k)){dup++;} else { seen.add(k); rec.seen=Date.now(); books.push(rec); ids.push(rec.id); added++; } }
+  // 같은 콜 찾기: 정확히 같은 키 → 없으면 글자가 조금 다른 같은 콜(동 이름 앞 '서울 강남구' 유무, 요금 ±1,000원 등)
+  const k=key(rec); let ex=seen.has(k)?books.find(x=>key(x)===k):null;
+  if(!ex){ try{ ex=books.find(x=>bkSameCall_(x,rec))||null; }catch(e){} }
+  try{ bkSeen_(ex||rec,!ex); }catch(e){}            // 등장 기록(처음 본 시각·다시 본 시각)
+  try{ bkBatchNote_(rec,ex); }catch(e){}             // 이번 사진 묶음 비교(새 콜·이미 있던 콜·사라진 콜)
+  if(ex){dup++;} else { seen.add(k); rec.seen=Date.now(); books.push(rec); ids.push(rec.id); added++; } }
  try{ bkSeenSave_(); }catch(e){}
  if(added) await Store.set(KEY_BOOK,books);
  return {added,dup,ids};
@@ -4023,14 +4191,14 @@ async function ocrRun(file){
   try{
    const arr=(await geminiOcr(await bkShrink_(file))).filter(x=>x&&(x.t||x.from||x.to));
    if(arr.length>=2){                          // 목록 캡처 → 전부 후보로 저장하고 플랜에서 판단
-    const res=await bkSaveCands_(arr); if(res.added) bkUpLog_(res.added); renderBook();
+    const res=await bkSaveCands_(arr); if(res.added) bkUpLog_(res.added); try{ bkBatchEnd_(); }catch(e){} renderBook();
     show(`✓ 사진 1장에서 예약콜 ${arr.length}건 인식 → 후보 ${res.added}건 저장${res.dup?` · 중복 ${res.dup}건 제외`:''}. 아래 「하루 플랜」에서 공차 최소 조합을 확인하세요.`,'var(--occ)');
     return;
    }
    const b=arr[0];
    if(b){ bkUpLog_(1);
     bkManual=true; $('bk_form').hidden=false; if(!$('bk_dur').value)$('bk_dur').value=60;
-    if(b.d)$('bk_d').value=b.d; if(b.t)$('bk_t').value=b.t;
+    $('bk_d').value=/^\d{4}-\d{2}-\d{2}$/.test(b.d||'')?b.d:bkDefaultDay_(b); if(b.t)$('bk_t').value=b.t;
     if(b.from)$('bk_from').value=b.from; if(b.to)$('bk_to').value=b.to;
     if(b.fare)$('bk_fare').value=b.fare; if(b.peak)$('bk_peak').value=b.peak;
     if(b.pax)$('bk_pax').value=b.pax; if(b.name)$('bk_name').value=b.name;
@@ -4085,6 +4253,7 @@ async function ocrRunMulti(files){
  // 앱 안 카메라와 같은 대기열: 축소 전송 · 3장 동시 · 한도(429)·과부하(503) 자동 재시도
  bkQueueFiles_(files);
  await new Promise(r=>{ const t=()=>{ if(!bkQ.items.length&&!bkQ.running) r(); else setTimeout(t,60); }; t(); });
+ try{ bkBatchEnd_(); }catch(e){}
  try{ renderBook(); }catch(e){}
  bkOcrBoxPaint_();
 }
