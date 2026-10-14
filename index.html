@@ -1056,6 +1056,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
         모두 들어 있어 기간·지역을 가리지 않고 바깥에서 정밀 분석할 수 있습니다.</div>
       <div class="tools"><button id="exDay">오늘 업무일</button><button id="exPeriod">선택 기간</button>
         <button id="exAll">전체</button><button id="exJSON">전체 JSON</button><button id="imp">복원</button></div>
+      <button id="exAllDays" class="opt" style="width:100%;text-align:center;margin:8px 0 0;border-color:var(--occ);color:var(--occ)">전체 데이터 내보내기 (9월~ 모든 운행일)</button>
       <div id="exStat" class="mt" style="color:var(--dim);font-size:10.5px;margin-top:8px"></div></div>
     <div id="anempty"></div>
   </section>
@@ -1069,6 +1070,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
       <button class="opt" id="bk_email_btn" style="flex:1;text-align:center;font-size:12.5px;padding:9px;border-color:var(--occ);color:var(--occ)">✉ 이메일 복붙 or 직접기입</button>
     </div>
     <input id="bk_file" type="file" accept="image/*" hidden>
+    <button class="opt" id="bk_voice" style="width:100%;text-align:center;font-size:13px;padding:10px;border-color:var(--occ);color:var(--occ);margin-bottom:7px">🎤 음성으로 입력</button>
     <div id="bk_ocr" hidden style="margin-bottom:7px;font-size:12px;padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--dim)"></div>
     <textarea id="bk_raw" placeholder="이미지를 올리거나, 이메일·문자 내용을 붙여넣거나, 직접 입력하세요&#10;&#10;카카오 예약콜 · 카카오톡 · 문자 · 이메일 어디서든&#10;날짜·시간·출발·도착·인원·이메일을 자동으로 찾아냅니다"></textarea>
     <div class="bkform" id="bk_form" hidden>
@@ -1275,7 +1277,6 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 
 <div class="dock">
   <button class="call" id="shiftbtn">운행 시작</button>
-  <button class="call" id="callbtn" hidden>콜 받음</button>
   <button class="big" id="tog">승객 탑승</button>
   <div class="hint" id="hint">빈차 · 손님을 태우면 누르세요</div>
 </div>
@@ -1319,7 +1320,10 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
     <div style="flex:1"><div class="glab">전송 암호(선택)</div><input id="cloud_token" placeholder="웹앱과 동일" autocomplete="off"></div>
   </div>
   <div id="cloud_stat" class="note2" style="margin:7px 0 4px;font-size:10.5px"></div>
-  <button class="opt" id="cloud_sync" style="text-align:center;margin:0 0 8px">지금 동기화</button>
+  <div style="display:flex;gap:6px;margin:0 0 8px">
+    <button class="opt" id="cloud_sync" style="flex:1;text-align:center;margin:0">지금 동기화</button>
+    <button class="opt" id="cloud_pushall" style="flex:1;text-align:center;margin:0;border-color:var(--occ);color:var(--occ)">과거 전체 전송</button>
+  </div>
   <div style="font-size:10.5px;color:var(--faint);margin:-2px 0 14px;line-height:1.5">
     주소를 넣으면 <b>운행 종료 때마다 그날 데이터(JSON)가 자동으로 내 구글 드라이브·시트에 저장</b>됩니다.
     오프라인이면 기기에 모아뒀다가 연결되면 자동 전송합니다. 기기 저장은 그대로 유지됩니다.
@@ -1531,7 +1535,8 @@ function bizDate(t){
 }
 let BIZ=null;                       // 현재 업무일 (초기화 후 확정)
 const K=(pfx)=>pfx+':'+BIZ;         // 업무일 기준 키
-let KEY='gongcha:'+new Date().toISOString().slice(0,10);
+let KEY='gongcha:'+bizDate();  // 업무일(로컬) 기준 — UTC 쓰면 자정~오전9시에 날짜가 어긋난다
+let KEY_LIVE='gongcha:live:'+bizDate();  // 진행 중 상태(콜받음·마지막활동) — 앱이 재시작돼도 복원
 let KEY_ODO='gongcha:odo';
 const KEY_HIST='gongcha:history';
 let odo={total:0,paid:0}, history=[], tripArchive=[];
@@ -1539,6 +1544,13 @@ let odo={total:0,paid:0}, history=[], tripArchive=[];
 let deadOdo=0, deadFrom=null;
 // 콜 수신 시점 기록. 하차 후 어느 방향으로 배회하다 콜을 받았는지 남긴다.
 let callPt=null, missedCalls=[];
+// 진행 중 상태를 기기에 저장/복원 — 앱이 메모리에서 내려갔다 다시 떠도
+// '콜 받음'·'마지막 활동'이 사라지지 않게 한다.
+function saveLive(){ try{
+  const s=JSON.stringify({callPt, lastAct, deadOdo, deadFrom});
+  try{ localStorage.setItem(KEY_LIVE,s); }catch(e){}
+  Store.set(KEY_LIVE,{callPt, lastAct, deadOdo, deadFrom});
+ }catch(e){} }
 const DIR8=['북','북동','동','남동','남','남서','서','북서'];
 function bearing(la1,lo1,la2,lo2){           // 0~360도 (북=0)
  const R=Math.PI/180, y=Math.sin((lo2-lo1)*R)*Math.cos(la2*R);
@@ -2421,8 +2433,15 @@ let armedBook=null;   // 예약으로 운행 시작 대기 (다음 '승객 탑�
 const KEY_BOOK='gongcha:books', KEY_CUST='gongcha:custs';
 const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
 
+// 한국어 수사 → 숫자 (음성 입력 대비: "두 명","세 개","오후 세 시")
+function koNum(s){
+ const one={'한':1,'두':2,'세':3,'네':4,'다섯':5,'여섯':6,'일곱':7,'여덟':8,'아홉':9,'열':10,
+   '하나':1,'둘':2,'셋':3,'넷':4};
+ return String(s).replace(/(다섯|여섯|일곱|여덟|아홉|하나|한|두|둘|세|셋|네|넷|열)\s*(시|명|개|분|인|사람|캐리어|가방)/g,
+   (m,a,b)=>one[a]+b);
+}
 function parseMsg(txt){
- const r={}, T=txt.replace(/\s+/g,' ').trim(), L=T.toLowerCase();
+ const r={}, T=koNum(txt).replace(/\s+/g,' ').trim(), L=T.toLowerCase();
  const now=new Date(), Y=now.getFullYear();
  // 날짜
  let m=T.match(/(20\d\d)[.\-\/년\s]+(\d{1,2})[.\-\/월\s]+(\d{1,2})/);
@@ -2462,6 +2481,8 @@ function parseMsg(txt){
  if(!r.from&&(m=L.match(/from\s+(.{2,40}?)\s+to\s+(.{2,40}?)(?:[.,;]|$| for | with | at )/i)))
   {r.from=m[1].trim();r.to=m[2].trim();}
  if(!r.to&&(m=T.match(/([^\s,]{2,30})\s*(?:까지|으로|로|행)/))) r.to=m[1];
+ // 음성: "A에서 B" 처럼 뒤 표식이 없어도 출발지를 '에서'로 잡는다
+ if(!r.from&&(m=T.match(/([가-힣A-Za-z0-9]{2,30})에서/))) r.from=m[1];
  if(!r.to&&/인천공항|incheon/i.test(T)) r.to='인천공항';
  if(!r.to&&/김포공항|gimpo/i.test(T)) r.to='김포공항';
  // 공항명 정규화 (김포국제공항 국내선 → 김포공항)
@@ -2726,6 +2747,43 @@ function initBook(){
  // ─── 이미지 올리기 (OCR 시도) + 직접기입(폼 노출): 사진 선택창을 열고, 취소해도 폼은 떠 있다 ───
  $('bk_img').onclick=()=>{ openManual(); $('bk_file').click(); };
  $('bk_file').onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(f){ocrRun(f);} e.target.value=''; };
+ // ─── 음성으로 입력 ───
+ $('bk_voice').onclick=()=>bkVoice();
+}
+// 음성 인식 → 입력칸(bk_raw) → 기존 파서로 자동 정리. (안드로이드 크롬 지원)
+let _rec=null, _recOn=false;
+function bkVoice(){
+ const $=id=>document.getElementById(id);
+ const box=$('bk_ocr'); box.hidden=false;
+ const show=(h,cls)=>{box.innerHTML=h; box.style.color=cls||'var(--dim)';};
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){ show('이 브라우저는 음성 입력을 지원하지 않습니다. 크롬으로 열거나 아래 칸에 직접 입력해 주세요.','var(--amber)'); return; }
+ if(_recOn&&_rec){ try{_rec.stop();}catch(e){} return; }      // 다시 누르면 종료
+ bkManual=true; { const f=$('bk_form'); if(f) f.hidden=false; } // 폼 열어 직접 수정 가능하게
+ const r=new SR(); _rec=r; r.lang='ko-KR'; r.interimResults=true; r.continuous=true; r.maxAlternatives=1;
+ let finalTxt=$('bk_raw').value?($('bk_raw').value+' '):'';
+ r.onstart=()=>{ _recOn=true; $('bk_voice').textContent='🔴 듣는 중… (누르면 종료)';
+   show('🎤 말씀하세요 — 예: "내일 오후 세 시 잠원동에서 인천공항, 두 명 캐리어 세 개 홍길동"'); };
+ r.onresult=(e)=>{
+   let interim='';
+   for(let i=e.resultIndex;i<e.results.length;i++){
+    const tr=e.results[i][0].transcript;
+    if(e.results[i].isFinal) finalTxt+=tr+' '; else interim+=tr;
+   }
+   $('bk_raw').value=(finalTxt+interim).trim();
+   $('bk_raw').dispatchEvent(new Event('input'));
+   if(interim) show('🎤 …'+interim);
+ };
+ r.onerror=(e)=>{ const er=(e&&e.error)||'';
+   show(er==='not-allowed'||er==='service-not-allowed'
+     ? '마이크 권한이 꺼져 있습니다. 주소창 자물쇠 → 마이크 허용 후 다시 눌러 주세요.'
+     : '음성 인식 오류('+er+'). 다시 시도하거나 직접 입력해 주세요.','var(--amber)'); };
+ r.onend=()=>{ _recOn=false; _rec=null; const v=$('bk_voice'); if(v) v.textContent='🎤 음성으로 입력';
+   const miss=['bk_d','bk_t','bk_from','bk_to'].filter(i=>!$(i).value);
+   if(($('bk_raw').value||'').trim().length>3)
+     show(miss.length?'음성 입력 완료 — 비어있는 칸을 확인·수정해 주세요.':'✓ 음성으로 채웠습니다. 확인 후 저장하세요.',
+          miss.length?'var(--amber)':'var(--occ)'); };
+ try{ r.start(); }catch(e){ show('마이크를 시작하지 못했습니다. 권한을 확인하거나 직접 입력해 주세요.','var(--amber)'); }
 }
 // 이미지 전처리: 확대 + 흑백 + 대비 ↑ (어두운 테마 캡처의 인식률을 높인다)
 async function ocrPrep(file){
@@ -2999,7 +3057,8 @@ function sidoOf(la,lo){
 /* ═══════════ 근무(운행 시작·종료) · 자정 롤오버 · 공차 2구간 (v25) ═══════════ */
 let shifts=[];                       // [{s:시작ts, e:종료ts|null, auto:true}]
 const KEY_SHIFT='gongcha:shifts';
-const SHIFT_IDLE_MIN=180;            // 무활동 이 분수 넘으면 마지막 활동 시각으로 자동 종료
+const SHIFT_IDLE_MIN=360;            // 무활동 이 분수(6시간) 넘으면 마지막 활동 시각으로 자동 종료
+                                     // (공항 대기 등 긴 공백에도 근무가 임의로 닫히지 않게 완화)
                                      // (60분은 공항 대기·식사에도 걸려 근무가 한낮에 닫혔다)
 let lastAct=null;                    // 마지막 운행 활동(하차·승차·콜) 시각
 const HM=ts=>{const d=new Date(ts);
@@ -3010,7 +3069,7 @@ async function shiftStart(){
  if(openShift()) return false;
  shifts.push({s:Date.now(),e:null});
  if(shifts.length>200) shifts=shifts.slice(-200);
- lastAct=Date.now();
+ lastAct=Date.now(); saveLive();
  await Store.set(KEY_SHIFT,shifts); drawShift(); render(); return true;
 }
 async function shiftEnd(at,auto){
@@ -3157,16 +3216,23 @@ async function checkRollover(){
   }
   await commitDay();                            // 어제 몫을 확정
   monthRev+=rev; await Store.set(KEY_MREV,monthRev);
-  // 새 하루
-  BIZ=now; KEY='gongcha:'+BIZ;
+  // ── 새 하루: 날짜 기준 키를 모두 오늘로 바꾸고 어제 값은 비운다 ──
+  BIZ=now; KEY='gongcha:'+BIZ; KEY_LIVE='gongcha:live:'+BIZ;
+  KEY_ODO='gongcha:odo:'+BIZ; KEY_EXP='gongcha:exp:'+BIZ;
+  KEY_REST='gongcha:rest:'+BIZ; KEY_FUEL='gongcha:fuel:'+BIZ;
+  KEY_MREV='gongcha:mrev:'+BIZ.slice(0,7);
   trips=keep.slice();                           // 진행 중 운행은 그대로 이어간다
   odo={total:0,paid:0}; lastFix=null;
   rests=[]; restOn=restOn?Date.now():null;      // 휴게 중이면 자정부터 다시 잰다
   fuels=[];
+  expense={gas:0,toll:0,etc:0};                 // 어제 경비가 오늘로 넘어오지 않게 초기화
+  monthRev=(await Store.get(KEY_MREV))||0;       // 달이 바뀌었으면 월 누계도 갱신
   await Store.set(KEY,trips); await Store.set(KEY_ODO,odo);
   await Store.set(KEY_REST,{r:rests,on:restOn}); await Store.set(KEY_FUEL,fuels);
+  await Store.set(KEY_EXP,expense);
   try{ buildZoneRate(); }catch(e){}
   try{ drawShift(); renderRest(); renderFuel(); renderHist(); }catch(e){}
+  try{ render(); }catch(e){}                     // 매출·목표 등 전체 화면 즉시 새로고침
   return true;
  } finally { rollBusy=false; }
 }
@@ -3751,6 +3817,7 @@ function initExport(){
  B('exPeriod',()=>exportRange('period'));
  B('exAll',()=>exportRange('all'));
  B('exJSON',exportFullJSON);
+ B('exAllDays',exportAllJSON);
 }
 
 function initShift(){
@@ -3787,7 +3854,12 @@ function initShift(){
  drawShift(); drawDead(); drawTimeline();
  // 자정 전환을 놓치지 않도록 1분마다 확인한다 (앱을 켜둔 채 자정을 넘기는 경우)
  setInterval(()=>{ checkRollover().then(ch=>{ if(ch) render(); }); }, 60000);
- document.addEventListener('visibilitychange',()=>{ if(!document.hidden) render(); });
+ // 앱을 다시 켜거나(백그라운드→포그라운드) 복귀하면, 먼저 날짜를 넘기고 나서 그린다.
+ // (어제 종료 후 자정을 넘겨 다시 열었을 때 어제 매출이 남아 보이던 문제 수정)
+ const _wake=()=>{ checkRollover().then(ch=>{ render(); }).catch(()=>render()); };
+ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) _wake(); });
+ window.addEventListener('pageshow',_wake);
+ window.addEventListener('focus',_wake);
 }
 async function initZone(){
  const p=await Store.get(KEY_PER); if(p&&PERIODS.some(x=>x.k===p)) anPeriod=p;
@@ -4658,6 +4730,14 @@ document.getElementById('setclose').onclick=async()=>{
    const s=document.getElementById('cloud_stat'); if(s) s.innerHTML='전송 중…';
    await cloudFlush();
  }; }
+{ const cpa=document.getElementById('cloud_pushall'); if(cpa) cpa.onclick=async()=>{
+   const cu=document.getElementById('cloud_url'), cd=document.getElementById('cloud_driver'), ct=document.getElementById('cloud_token');
+   if(cu) cloud.url=(cu.value||'').trim();
+   if(cd) cloud.driverId=(cd.value||'').trim();
+   if(ct) cloud.token=(ct.value||'').trim();
+   await cloudSave();
+   await cloudPushAll();
+ }; }
 setSheet.onclick=e=>{if(e.target===setSheet){
  const m=document.getElementById('setmsg');
  m.style.color='var(--amber)';
@@ -4926,6 +5006,17 @@ async function backupDay(date, tripsArr){
   return true;
  }catch(e){ console.warn('하루 백업 실패',e&&e.message); return false; }
 }
+// 진행 중 포함 오늘 전체를 백업에 반영 (승차·하차 때 호출 → 재방문 복구에 쓰임)
+async function liveBackup(){ try{ await backupDay(BIZ, trips.slice()); }catch(e){} }
+// 오늘 운행을 불러오되, 키가 비었으면 백업(gongcha:bak:날짜)에서 되살린다.
+async function recoverDayTrips(){
+ let s=await Store.get(KEY);
+ if(!(Array.isArray(s)&&s.length)){
+  try{ const bk=await Store.get(KEY_BAK+BIZ);
+       if(bk&&Array.isArray(bk.trips)&&bk.trips.length){ s=bk.trips.slice(); await Store.set(KEY,s); } }catch(e){}
+ }
+ return Array.isArray(s)?s:[];
+}
 // 업무일이 바뀌면 지난 업무일을 조용히 백업하고 넘어간다. (저장/나중에 바를 띄우지 않는다)
 async function autoBackup(){
  const today=bizDate();
@@ -4982,14 +5073,47 @@ async function cloudFlush(){
 }
 // 큐에 넣고 바로 전송 시도 (운행 종료/롤오버에서 호출)
 async function cloudQueueFlush(date){ cloudQueue(date); await cloudSave(); return cloudFlush(); }
+// 기기에 저장된 모든 운행일(gongcha:YYYY-MM-DD)을 찾는다 — 9월부터 전체
+function allStoredDays(){
+ const set=new Set();
+ try{ for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i);
+   let m=/^gongcha:(\d{4}-\d{2}-\d{2})$/.exec(k||''); if(m) set.add(m[1]);
+   m=/^gongcha:bak:(\d{4}-\d{2}-\d{2})$/.exec(k||''); if(m) set.add(m[1]);
+ } }catch(e){}
+ try{ (history||[]).forEach(h=>{ if(h&&h.date) set.add(h.date); }); }catch(e){}
+ return [...set].sort();
+}
+// 과거 전체를 클라우드로 올린다 (3일치 누락분 포함)
+async function cloudPushAll(){
+ if(!cloudEnabled()){ try{ alert('먼저 설정에서 웹앱 주소를 저장해 주세요.'); }catch(e){} return; }
+ const days=allStoredDays(); days.forEach(d=>cloudQueue(d)); await cloudSave();
+ const s=document.getElementById('cloud_stat'); if(s) s.innerHTML=`전체 ${days.length}일 전송 중…`;
+ await cloudFlush();
+ if(s){ const left=(cloud.outbox||[]).length;
+   s.innerHTML = left ? `전송 시도함 · <span style="color:var(--amber)">남은 ${left}일</span> (연결되면 자동 재전송)`
+                      : `✓ 전체 ${days.length}일 전송함 — 구글 시트/드라이브에서 확인하세요`; }
+}
+// 9월부터 전체 데이터를 한 파일(JSON)로 내보낸다 (복원·정밀분석용)
+async function exportAllJSON(){
+ const days=allStoredDays(), all={};
+ for(const d of days){ try{ const arr=await Store.get('gongcha:'+d); if(arr&&arr.length) all[d]=arr; }catch(e){} }
+ const out={app:'gongcha', schema:3, exported:new Date().toISOString(),
+   firstDay:days[0]||null, lastDay:days[days.length-1]||null, dayCount:Object.keys(all).length,
+   days:all, history, tripArchive, expList, books, custs, obs, fuels, shifts, cfg:CFG};
+ const ok=await shareOrDownload(JSON.stringify(out), 'gongcha_전체_'+(days[0]||'')+'_'+(days[days.length-1]||bizDate())+'.json', 'application/json');
+ const st=document.getElementById('exStat');
+ if(st) st.innerHTML = ok ? `전체 ${Object.keys(all).length}일(${days[0]||'-'}~${days[days.length-1]||'-'}) 내보냈습니다.` : '내보내기 실패';
+}
 function cloudDraw(){
  const s=document.getElementById('cloud_stat'); if(!s) return;
  if(!cloudEnabled()){ s.innerHTML='<span style="color:var(--faint)">미설정 — 웹앱 주소를 넣으면 운행 종료 때 자동 전송됩니다.</span>'; return; }
  const n=(cloud.outbox||[]).length;
  let last='없음';
  try{ if(cloud.lastSync) last=new Date(cloud.lastSync).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){}
+ let stored=0; try{ stored=allStoredDays().length; }catch(e){}
  s.innerHTML=`<span style="color:var(--occ)">자동 보관 켜짐</span>${cloud.driverId?' · '+cloud.driverId:''} · 마지막 전송 ${last} · `+
    (n?`<span style="color:var(--amber)">미전송 ${n}건</span>`:'미전송 0건')+
+   `<br><span style="color:var(--faint)">기기에 운행일 ${stored}일 저장됨 — '과거 전체 전송'으로 한꺼번에 올릴 수 있습니다</span>`+
    (n&&cloud.lastErr?`<br><span style="color:var(--faint)">${cloud.lastErr}</span>`:'');
 }
 const KEY_BAK='gongcha:bak:';   // 날짜별 앱 내부 백업 (파일 저장 실패해도 기기에 보관)
@@ -6277,8 +6401,11 @@ async function togRun(){
   lastAct=Date.now();
   callPt=null;
   deadOdo=0;
+  saveLive();
   try{ drawCall(); }catch(e){}
   trips.push(nt);
+  try{ localStorage.setItem(KEY,JSON.stringify(trips)); }catch(e){}   // 승차 즉시 동기 저장(창 닫혀도 안전)
+  liveBackup();                                                       // 백업에도 반영(재방문 복구용)
   try{ if(pos) rrLearn(pos.la,pos.lo, cur?cur.n:null, new Date().getHours()); }catch(e){}
   // 날씨는 건별로 기록한다 (비는 오다 그치므로 하루 단위로는 못 잡는다).
   // 부가정보이므로 실패해도 운행 기록은 그대로 저장된다.
@@ -6292,7 +6419,7 @@ async function togRun(){
     const sec=t0&&t0.start?(Date.now()-t0.start)/1000:999;
     if(sec<60&&!confirm(`탑승한 지 ${Math.round(sec)}초밖에 안 됐습니다.\n\n승차 때 누르지 못하고 지금 연달아 누르신 건가요?\n\n[확인] 하차로 기록 — 나중에 ✏에서 승차 시각을 고치세요\n[취소] 아직 운행 중`)) return; }
   occupied=false; try{ drawCall(); }catch(e){}const t=trips[trips.length-1];
-  t.end=Date.now();lastDrop=t.end;lastAct=t.end;
+  t.end=Date.now();lastDrop=t.end;lastAct=t.end; saveLive();
   if((t.end-t.start)<60000) t.flagShort=true;t.to=cur?cur.n:null;t.tla=pos?.la;t.tlo=pos?.lo;
   fixKm(t);                              // 우선 GPS·직선 기준으로 확정 (TMAP 응답은 창을 띄운 뒤 보정)
   dest=null;tog.textContent='승객 탑승';tog.classList.remove('occ');
@@ -6340,8 +6467,10 @@ document.getElementById('ok').onclick=async()=>{
  }catch(e){ console.warn('요금/태그 처리 중 오류(저장은 계속)',e); }
  try{ document.getElementById('dlg').close(); }catch(e){}
  try{ if(pending&&pending.end) await relocateToBoardingDay(pending); }catch(e){ console.warn('전일 귀속 실패',e&&e.message); }
+ try{ localStorage.setItem(KEY,JSON.stringify(trips)); }catch(e){}
  try{ await Store.set(KEY,trips); await Store.set(KEY_ODO,odo); }catch(e){ console.warn('저장 실패',e&&e.message); }
  try{ await commitDay(); }catch(e){ console.warn('일집계 실패',e&&e.message); }
+ liveBackup();                                     // 하차·요금 확정도 백업에 반영
  try{ render(); }catch(e){}
  try{ const h=document.getElementById('hint'); if(h) h.textContent='빈차 · 저장됨 · 손님을 태우면 누르세요'; }catch(e){}
 };
@@ -6366,6 +6495,11 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
   r.readAsText(e.target.files[0]);};i.click();}; }
 
 (async()=>{
+ // 저장 보호: 안드로이드 크롬이 메모리 부족 때 사이트 데이터를 지우지 못하게
+ // '영구 저장' 권한을 요청한다. (재방문 때 기록이 통째로 사라지는 걸 막는다)
+ try{ if(navigator.storage&&navigator.storage.persist){
+   const p=await navigator.storage.persisted(); if(!p) await navigator.storage.persist();
+ } }catch(e){}
  const c0=await Store.get(KEY_CFG); if(c0&&c0.s&&c0.s.length===3) CFG=c0;
  if(CFG.bd==null) CFG.bd=0;
  // v25 이관: 하루 결산을 00:00~23:59 로 통일한다 (한 번만 수행)
@@ -6373,7 +6507,7 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
  // 일별 매출은 '승차 시점' 기준(00:00~23:59). 자정을 넘긴 손님도 태운 날 매출로 잡는다.
  if(CFG.basis!=='start'){ CFG.basis='start'; await Store.set(KEY_CFG,CFG); }
  BIZ=bizDate();
- KEY='gongcha:'+BIZ; KEY_ODO='gongcha:odo:'+BIZ; KEY_EXP='gongcha:exp:'+BIZ;
+ KEY='gongcha:'+BIZ; KEY_LIVE='gongcha:live:'+BIZ; KEY_ODO='gongcha:odo:'+BIZ; KEY_EXP='gongcha:exp:'+BIZ;
  KEY_MREV='gongcha:mrev:'+BIZ.slice(0,7); KEY_REST='gongcha:rest:'+BIZ; KEY_FUEL='gongcha:fuel:'+BIZ;
  apiKey=(await Store.get(KEY_API))||'';
  mySpots=(await Store.get(KEY_SPOT))||[];
@@ -6401,11 +6535,27 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
  try{ initShift(); }catch(e){ console.warn('initShift 건너뜀',e.message); }
  safe(initRest,'initRest'); safe(initEdit,'initEdit'); safe(initFuel,'initFuel');
  try{ if(await Store.get(KEY_WAKE)){ wantWake=true; await wakeOn(); drawWake(); } }catch(e){}
- const s=await Store.get(KEY);
+ let s=await recoverDayTrips();
  if(Array.isArray(s)&&s.length){trips=s;const l=trips[trips.length-1];
   if(l&&!l.end){occupied=true;tog.textContent='승객 하차';tog.classList.add('occ');
    hint.textContent='실차 · 목적지를 설정하면 미리 계산합니다';
    if(l.dest){let b=null;for(const g of G)if(g.n===l.dest&&(!b))b=g;dest=b;}}}
+ // 진행 중 상태 복원: 콜 받음·마지막 활동 (앱이 메모리에서 내려갔다 떠도 유지)
+ try{ const lv=await Store.get(KEY_LIVE);
+      if(lv&&typeof lv==='object'){
+       if(lv.callPt) callPt=lv.callPt;
+       if(lv.lastAct) lastAct=lv.lastAct;
+       if(lv.deadOdo!=null) deadOdo=lv.deadOdo;
+       if(lv.deadFrom!=null) deadFrom=lv.deadFrom;
+      }
+      try{ drawCall(); }catch(e){}
+ }catch(e){}
+ // 종료되지 않은 창(페이지)이 닫혀도 최신 기록·상태가 남도록 동기 저장 훅
+ try{
+  const _flush=()=>{ try{ localStorage.setItem(KEY,JSON.stringify(trips)); }catch(e){} try{ saveLive(); }catch(e){} };
+  window.addEventListener('pagehide',_flush);
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden) _flush(); });
+ }catch(e){}
  try{buildZoneRate();}catch(e){console.warn('buildZoneRate 건너뜀',e.message);}
  try{drawTags();}catch(e){console.warn('drawTags 건너뜀',e.message);}
  try{ airKey=(await Store.get(KEY_AIRK))||''; airLog=(await Store.get(KEY_AIRLOG))||[];
@@ -6430,11 +6580,12 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
     }
    }
    callPt.pickStartOdo=deadOdo;
+   saveLive();
    drawCall();
   }else{                                         // 콜 취소(놓침)
    missedCalls.push({...callPt, lost:Math.round((Date.now()-callPt.t)/1000)});
    try{ await Store.set('gongcha:missed:'+bizDate(),missedCalls); }catch(e){}
-   callPt=null; drawCall();
+   callPt=null; saveLive(); drawCall();
   }
  };
 
