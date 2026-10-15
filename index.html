@@ -108,8 +108,21 @@ header .clk{margin-left:auto;font-size:15px}
 .pext{font-size:11px;padding:1px 6px;border:1px solid var(--amber);color:var(--amber);border-radius:4px}
 .pbar .fill.fillst{background:repeating-linear-gradient(45deg,var(--amber) 0 4px,transparent 4px 8px);opacity:.45}
 .pfc{font-size:13px;margin:6px 0 2px;color:var(--txt)}
-.pday{display:flex;gap:6px;margin-bottom:8px}
-.pday button{flex:1;padding:7px;background:var(--panel);border:1px solid var(--line);color:var(--dim);font:inherit;font-size:12px;border-radius:6px}
+.pday{display:flex;gap:6px;margin-bottom:8px;overflow-x:auto;padding-bottom:3px;scrollbar-width:none}
+.pday::-webkit-scrollbar{display:none}
+.pday button{flex:none;min-width:72px;padding:6px 8px;background:var(--panel);border:1px solid var(--line);color:var(--dim);font:inherit;font-size:12px;border-radius:6px;line-height:1.3;text-align:center}
+.pday button small{display:block;font-size:10px;font-weight:400;color:var(--faint)}
+.pday button.on small{color:var(--amber)}
+.pday button.sat{color:#6aa6ff}.pday button.sun{color:#ff6b6b}
+.pextbox{margin:8px 0 2px;border:1px solid var(--line);border-radius:8px;padding:8px 9px;background:var(--panel)}
+.pextbox .ph{font-size:12.5px;font-weight:700;margin-bottom:4px}
+.pxr{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:12px;line-height:1.45}
+.pxr:first-of-type{border-top:0}
+.pxr .pxl{flex:1;min-width:0}
+.pxr.on .pxl b.pxn{color:var(--amber)}
+.pxr button{flex:none;padding:5px 9px;font-size:11.5px;border:1px solid var(--line);background:transparent;color:var(--dim);border-radius:6px}
+.pxr.on button{border-color:var(--amber);color:var(--amber)}
+.pxr .pxg{color:var(--occ)} .pxr .pxw{color:var(--amber)} .pxr .pxb{color:var(--vac)}
 .pday button.on{border-color:var(--amber);color:var(--amber);font-weight:700}
 .pempty{font-size:12px;color:var(--dim);line-height:1.6;padding:9px 11px;border:1px dashed var(--line);border-radius:7px}
 .pup{font-size:11.5px;color:var(--txt);padding:7px 10px;margin-bottom:6px;border-left:3px solid var(--amber);background:var(--panel);border-radius:0 6px 6px 0;line-height:1.5}
@@ -1261,7 +1274,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   </div>
   <section style="padding-top:0" id="plan_sec">
     <div class="eyebrow"><span>하루 플랜 · 총시간당 매출 최대</span><span id="plan_sum" style="letter-spacing:0"></span></div>
-    <div class="pday"><button id="plan_day0" class="on">오늘</button><button id="plan_day1">내일</button><button id="plan_day2">모레</button></div>
+    <div class="pday" id="plan_days"></div>
     <div id="plan_tiles" class="ptiles"></div>
     <div id="plan_bar" style="margin-bottom:9px"></div>
     <div id="plan_up"></div>
@@ -1270,6 +1283,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
       <div class="fr"><label>업무 시작</label><input id="pc_start" type="text" inputmode="numeric" placeholder="비우면 자동 (첫 예약 30분 전)"></div>
       <div class="fr"><label>하루 목표(원)</label><input id="pc_goal" type="number" inputmode="numeric" placeholder="400000"></div>
       <div class="fr"><label>하한 시급(원/h)</label><input id="pc_floor" type="number" inputmode="numeric" placeholder="40000 (목표 시급선 — 색 표시용)"></div>
+      <div class="fr"><label>퇴근 목표</label><input id="pc_end" type="text" inputmode="numeric" placeholder="예 16:00 · 비우면 근무 상한 시간으로"></div>
       <div class="fr"><label>근무 상한(시간)</label><input id="pc_cap" type="number" inputmode="numeric" placeholder="10"></div>
       <div class="fr"><label>집(출발·귀가)</label><input id="pc_home" type="text" placeholder="남양주 다산동"></div>
       <div class="fr"><label>주요 영업지</label><input id="pc_zones" type="text" placeholder="여의동,강남구,서초구,용산구,송파구,중구,마포구,성동구"></div>
@@ -2780,7 +2794,7 @@ const BK_LINK=45, BK_DRIFT_GAP=90, BK_DRIFT_MIN=25;
 const BK_FUELKM=160;   // 공차 1km 연료비(벤티 LPG ≈ 6.5km/L × 1,050원) — 설계서 dp식의 c·deadKm 항
 const KEY_PLANCFG='gongcha:plancfg', KEY_BKUP='gongcha:bkuplog';
 // 기본값: 하루 10시간·40만원(JK 기본 목표), 하한 4만/h, 집 = 남양주 다산동(자택 주차 → 출발·귀가 지점)
-let planCfg={start:'',goal:400000,floor:40000,cap:10,capMax:12,day:0,alert:1,hrs:'',home:'남양주 다산동',ret:0,
+let planCfg={start:'',end:'',ext:{},goal:400000,floor:40000,cap:10,capMax:12,day:0,alert:1,hrs:'',home:'남양주 다산동',ret:0,
  zones:'여의동,강남구,서초구,용산구,송파구,중구,마포구,성동구'};
 // ── 내 즉시콜 시급 S(h): 실제 운행기록(예약 제외)에서 시간대별 요금 ÷ (앞 공차 + 운행). 예약콜의 기회비용 ──
 //  예약콜을 받는 건 '그 시간에 즉시콜로 벌었을 돈'을 포기하는 것 → 이 값보다 나은 예약만 연결한다.
@@ -3339,7 +3353,7 @@ function bkBatchEnd_(){
 // 사진 묶음 분석이 끝날 때마다 바로 알림: 지금 수락할 콜 + 40만·4만/h 목표 대비 현황
 function bkBatchToast_(LB){
  if(typeof document==='undefined') return;
- const goal=planCfg.goal||400000, floor=planCfg.floor||40000, dn=d=>['오늘','내일','모레'][[0,1,2].find(o=>bkDayStr_(o)===d)]||d.slice(5);
+ const goal=planCfg.goal||400000, floor=planCfg.floor||40000, dn=d=>bkDateLab_(d);
  const ds=Object.entries(LB.days).sort((a,b)=>(b[1].add.length+b[1].rem.length)-(a[1].add.length+a[1].rem.length));
  let msg=`📸 사진 분석 끝 — 새 콜 ${LB.newN} · 그대로 ${LB.sameN}`+(LB.gone.length?` · 사라진 콜 ${LB.gone.length}건 삭제`:'')+(LB.expired?` · 지난 콜 ${LB.expired}건 정리`:'');
  ds.slice(0,2).forEach(([d,x])=>{ const acc=x.now.filter(c=>c.cand), nw=new Set(x.add.map(c=>c.id));
@@ -3454,7 +3468,7 @@ let bkGapCtx=null;
 function bkDefaultDay_(b){
  if(b&&b.imm===true) return bkDayStr_(0);
  if(bkGapCtx&&Date.now()-bkGapCtx.at<30*60000&&bkGapCtx.d) return bkGapCtx.d;
- return bkDayStr_(Math.min(2,Math.max(0,(typeof planCfg!=='undefined'&&planCfg.day)|0)));
+ return bkDayStr_(bkDayOff_(typeof planCfg!=='undefined'&&planCfg.day));
 }
 // ── 예약콜 등장 기록: 사진에서 처음 본 시각(seen)·마지막으로 다시 본 시각(last) — 좋은 콜이 언제 올라와 언제 사라지는지 ──
 //  JK: "좋은 콜은 베테랑들이 먼저 선점 → 중요 매출 예약콜이 어느 시간대에 올라오는지 기록으로 모아 확인"
@@ -3682,7 +3696,7 @@ async function bkPGeoFill_(list){
 let _bkTmBusy=false;
 async function bkTmPrefetch_(legs){
  if(_bkTmBusy||typeof apiKey==='undefined'||!apiKey) return 0; _bkTmBusy=true; let n=0;
- try{ const now=Date.now(); const todo=legs.filter(L=>L&&L.a&&L.b&&L.ms>now-5*60000&&L.ms<now+50*3600000&&dist(L.a.la,L.a.lo,L.b.la,L.b.lo)>=1&&!bkTmGet_(L.a,L.b,L.ms));
+ try{ const now=Date.now(); const todo=legs.filter(L=>L&&L.a&&L.b&&L.ms>now-5*60000&&L.ms<now+BK_DAYS*86400000&&dist(L.a.la,L.a.lo,L.b.la,L.b.lo)>=1&&!bkTmGet_(L.a,L.b,L.ms));
   const seen=new Set(); for(const L of todo){ const k=bkTmKey_(L.a,L.b,L.ms); if(seen.has(k)) continue; seen.add(k); if(bkTmQuota_()<=0||seen.size>30) break;
    try{ if(await bkTmFetch_(L.a,L.b,L.ms)) n++; }catch(e){ if(/TMAP 4(01|03|29)/.test(e.message)) break; } } }
  finally{ _bkTmBusy=false; }
@@ -3707,13 +3721,19 @@ function bkPlanRefine_(C,r){
   if(typeof apiKey==='undefined'||!apiKey) return;
   const day=C&&C.day, list=books.filter(b=>b.d>=bkDayStr_(0)&&(b.fromAddr||b.toAddr)&&((b.fromAddr&&b.fla==null)||(b.toAddr&&b.tla==null)));
   const g=await bkPGeoFill_(list.slice(0,25)); if(g){ try{ await Store.set(KEY_BOOK,books); }catch(e){} }
-  const n=await bkTmPrefetch_(bkPlanLegs_(g?bkPlanCtx_(Math.min(2,Math.max(0,planCfg.day|0))):C,r));
+  const n=await bkTmPrefetch_(bkPlanLegs_(g?bkPlanCtx_(bkDayOff_(planCfg.day)):C,r));
   if(g||n){ bkTmVer++; try{ renderBook(); }catch(e){} }
  }catch(e){} },1500);
 }
 // OCR 상세주소 정리: 비었거나 동이름과 같으면 없음
 function bkAddrClean_(a,dong){ let s=String(a==null?'':a).replace(/\s+/g,' ').trim(); if(!s||/^(null|없음|-)$/i.test(s)) return undefined;
  const d=String(dong||'').replace(/^(서울|경기|인천)\s*/,'').trim(); if(d&&s.replace(/[()]/g,'').replace(/^(서울|경기|인천)\s*/,'').trim()===d) return undefined; return s.slice(0,120); }
+
+// ── 예약 탭 날짜: 오늘부터 8일 (JK 10.15: 목록에 2~3주 뒤 콜도 보이므로 최소 8일 추적·추천) ──
+const BK_DAYS=8;
+const bkDayOff_=v=>Math.min(BK_DAYS-1,Math.max(0,(v|0)));
+const BK_WD=['일','월','화','수','목','금','토'];
+function bkDateLab_(d){ const x=new Date(d+'T00:00'); return `${x.getMonth()+1}.${String(x.getDate()).padStart(2,'0')}(${BK_WD[x.getDay()]})`; }
 
 function renderBook(){
  const up=books.filter(b=>!b.cand&&bkEnd(b)>Date.now()-3600000).sort((a,b)=>bkStart(a)-bkStart(b));
@@ -3837,20 +3857,29 @@ function bkPlanCtx_(off){
   if(b&&b._geo){ const planned=lastDone.start+b._ride*60000, mins=Math.round((planned-lastDone.end)/60000); if(mins>=5) early={b,mins,end:lastDone.end}; } }
  // 근무 창: 오늘은 첫 운행(또는 지금)부터 근무 상한까지, 내일은 출발부터 근무 상한까지
  const t0=T.length?Math.min(...T.map(t=>t.start).filter(Boolean)):null;
- const anchor=(t0&&t0<startMs?t0:startMs), winEnd=Math.max(anchor+(planCfg.cap||10)*3600000,startMs+3600000);
+ const anchor=(t0&&t0<startMs?t0:startMs), winEnd=Math.max(anchor+bkBaseCap_({day,anchor})*3600000,startMs+3600000);
  const atHome=!running&&!T.length&&!!startG&&!!homeG&&(startG===homeG||dist(startG.la,startG.lo,homeG.la,homeG.lo)<2);   // 집에서 막 나가는 경우만 '첫 영업지' 적용
  return {day,isToday,nodes,acc,startMs,startG,homeG,auto,running,early,doneN:Object.keys(doneT).length,winEnd,anchor,atHome};
 }
 // 플랜 계산 설정 (플랜·모두 수락·카메라가 같은 규칙을 쓰도록 한 곳에서). capH = 근무 시간
+// 기본 근무 시간: 퇴근 목표(예 16:00)가 있으면 출발~퇴근, 없으면 근무 상한(시간)
+function bkBaseCap_(C){
+ const e=String(planCfg.end||''); if(/^\d{1,2}:\d{2}$/.test(e)&&C&&C.anchor){ let end=new Date(`${C.day}T${e.padStart(5,'0')}`).getTime(); if(end<=C.anchor) end+=86400000;
+  const h=(end-C.anchor)/3600000; if(h>=2) return Math.round(Math.min(22,h)*100)/100; }
+ return planCfg.cap||10;
+}
 function bkPlanBase_(C,capH){
- const winEnd=Math.max(C.anchor+(capH||planCfg.cap||10)*3600000,C.startMs+3600000);
+ const H=capH||bkBaseCap_(C), winEnd=Math.max(C.anchor+H*3600000,C.startMs+3600000);
  return {startMs:C.startMs,startG:C.startG,homeG:C.homeG,floor:planCfg.floor||40000,
-  maxMin:Math.round((winEnd-C.startMs)/60000),winEnd,live:C.isToday,ret:planCfg.ret?1:0,capH:capH||planCfg.cap||10};
+  maxMin:Math.round((winEnd-C.startMs)/60000),winEnd,live:C.isToday,ret:planCfg.ret?1:0,capH:H};
 }
 // 10시간 플랜 → 예약이 목표(40만)에 못 미치면 12시간으로 늘려 다시 (늘려서 예약이 1만원 이상 늘 때만 채택)
 function bkPlanBest_(C){
  const pool=C.nodes.filter(b=>b._s>=C.startMs-60000); if(!pool.length) return null;
- const cap=planCfg.cap||10, cmax=Math.max(cap,planCfg.capMax||12), goal=planCfg.goal||400000;
+ // 그날 고른 연장근무 선택지가 있으면 그 근무 시간으로 (⏱ 근무시간 선택지)
+ const ov=planCfg.ext&&planCfg.ext[C.day];
+ if(ov){ const bo=bkPlanBase_(C,ov), Po=bkPlanPick_(pool,bo); if(Po) return {PK:Po,base:bo,ext:true,P10:Po,pool,override:ov}; }
+ const cap=bkBaseCap_(C), cmax=Math.max(cap,planCfg.end?cap:(planCfg.capMax||12)), goal=planCfg.goal||400000;
  const b10=bkPlanBase_(C,cap), P10=bkPlanPick_(pool,b10); if(!P10) return null;
  let res={PK:P10,base:b10,ext:false,P10,pool};
  if(cmax>cap&&P10.pick.rev<goal){ const b12=bkPlanBase_(C,cmax), P12=bkPlanPick_(pool,b12);
@@ -3862,11 +3891,10 @@ function bkEarnedToday_(){ try{ return (trips||[]).reduce((s,t)=>s+(t.fare||0),0
 function renderPlan_(){
  const sec=document.getElementById('plan_sec'); if(!sec) return;
  sec.hidden=false;
- const off=Math.min(2,Math.max(0,planCfg.day|0)), C=bkPlanCtx_(off);
+ const off=bkDayOff_(planCfg.day), C=bkPlanCtx_(off);
  try{ renderTiles_(C); }catch(e){}
  try{ renderTT_(); }catch(e){}
- ['plan_day0','plan_day1','plan_day2'].forEach((id,i)=>{const b=document.getElementById(id); if(!b) return; b.classList.toggle('on',i===off);
-  const d=bkDayStr_(i), n=books.filter(x=>x.d===d).length; b.textContent=['오늘','내일','모레'][i]+(n?` · ${n}건`:''); });
+ bkDayTabs_(off);
  const goal=planCfg.goal||400000, floor=planCfg.floor||40000, capMin=(planCfg.cap||10)*60;
  const BEST=bkPlanBest_(C), pool=C.nodes.filter(b=>b._s>=C.startMs-60000);
  const PK=BEST?BEST.PK:null, base=BEST?BEST.base:bkPlanBase_(C);
@@ -3876,12 +3904,12 @@ function renderPlan_(){
  if(!r||!r.calls||!r.calls.length){
   const noGeo=pool.filter(b=>!b._geo).length;
   sum.textContent='';
-  bar.innerHTML=`<div class="pempty">${['오늘','내일','모레'][off]} 계획할 예약이 없습니다.`+
+  bar.innerHTML=`<div class="pempty">${bkDateLab_(C.day)} 계획할 예약이 없습니다.`+
    (noGeo?` <b>${noGeo}건</b>은 위치를 못 찾았습니다 — 동 이름을 '역삼동'·'서울 신촌동'처럼 고쳐주세요.`:'')+
    `<br>예약콜 목록을 캡처해 <b>📷 이미지 올리기</b>로 여러 장 올리면 후보로 쌓이고, 공차가 가장 적은 조합을 여기서 짜 드립니다.</div>`;
   tl.innerHTML=''; up.innerHTML=''; renderCand_(C,null); renderBkUp_(); renderPeak_(); return;
  }
- const fc=PK.fc, earned=off?0:bkEarnedToday_(), total=earned+fc.total, resv=earned+r.rev, DN=['오늘','내일','모레'][off]||'그날';
+ const fc=PK.fc, earned=off?0:bkEarnedToday_(), total=earned+fc.total, resv=earned+r.rev, DN=off?bkDateLab_(C.day):'오늘';
  const pctE=Math.min(100,earned/goal*100), pctP=Math.min(100-pctE,r.rev/goal*100), pctF=Math.min(100-pctE-pctP,fc.fill/goal*100);
  sum.textContent=`예약 ${r.calls.length}콜 · 출발 ${bkHM_(r.departMs)} ~ 근무 끝 ${bkHM_(fc.endMs)}`;
  const fr=fc.rate, col=fr>=floor?'occ':fr>=PK.street.avg?'amber':'vac';
@@ -3894,7 +3922,9 @@ function renderPlan_(){
   `<span>예약 운행 <b>${(r.workH).toFixed(1)}</b>h</span><span>공차 <b>${r.deadMin}</b>분·<b>${r.deadKm.toFixed(1)}</b>km</span>`+
   (r.homeMin?(r.retKind==='home'?`<span>귀가 <b>${r.homeMin}</b>분</span>`:`<span>영업지(${bkEsc_(r.retZone||'')}) 복귀 <b>${r.homeMin}</b>분</span>`):'')+
   `<span>빈 시간 <b>${fc.seg.reduce((t,x)=>t+x.m,0)}</b>분(즉시·임박콜)</span>`+
-  `<span>공차율 <b>${Math.round(r.deadRatio*100)}</b>%</span>${C.auto?'':`<span>시작 <b>${planCfg.start}</b></span>`}</div>`;
+  `<span>공차율 <b>${Math.round(r.deadRatio*100)}</b>%</span>${C.auto?'':`<span>시작 <b>${planCfg.start}</b></span>`}</div>`+
+  `<div id="plan_ext" class="pextbox"><div class="ph">⏱️ 근무시간 선택지 — 계산 중…</div></div>`;
+ setTimeout(()=>{ try{ renderExt_(C,BEST); }catch(e){ const x=document.getElementById('plan_ext'); if(x) x.hidden=true; } },0);
  // 타임라인 + 빈 시간 (임박콜 우선 — 하차지가 정해져 있음. 즉시콜은 빈 시간의 절반 안에 하차할 것만)
  let h='';
  const segAt=(a)=>fc.seg.find(x=>Math.abs(x.a-a)<60000);
@@ -4118,17 +4148,18 @@ function initPlan_(){
  const $=id=>document.getElementById(id);
  const save=async()=>{ try{ await Store.set(KEY_PLANCFG,planCfg); }catch(e){} };
  const fill=()=>{ if(!$('pc_goal')) return;
-  $('pc_start').value=planCfg.start||''; $('pc_goal').value=planCfg.goal||''; $('pc_floor').value=planCfg.floor||'';
+  $('pc_start').value=planCfg.start||''; if($('pc_end')) $('pc_end').value=planCfg.end||''; $('pc_goal').value=planCfg.goal||''; $('pc_floor').value=planCfg.floor||'';
   $('pc_cap').value=planCfg.cap||''; $('pc_alert').checked=!!planCfg.alert; $('pc_hrs').value=planCfg.hrs||'';
   if($('pc_home')) $('pc_home').value=planCfg.home||'';
   if($('pc_ret')) $('pc_ret').checked=!!planCfg.ret; if($('pc_zones')) $('pc_zones').value=planCfg.zones||''; };
  fill();
- ['plan_day0','plan_day1','plan_day2'].forEach((id,i)=>{ if($(id)) $(id).onclick=()=>{ planCfg.day=i; save(); renderPlan_(); }; });
+ const pdays=$('plan_days'); if(pdays&&!pdays._bound){ pdays._bound=1; pdays.addEventListener('click',e=>{ const b=e.target.closest('[data-pday]'); if(!b) return; planCfg.day=+b.dataset.pday; save(); renderPlan_(); }); }
  if($('pc_save')) $('pc_save').onclick=async()=>{
 if($('pc_home')){ const hv=($('pc_home').value||'').trim();
    if(hv&&!bkGeo_(hv)){ $('pc_msg').textContent='집 위치를 못 찾았습니다 — 예: 남양주 다산동'; $('pc_msg').style.color='var(--vac)'; return; }
    planCfg.home=hv; $('pc_msg').style.color='var(--occ)'; }
   planCfg.start=($('pc_start').value||'').trim();
+  if($('pc_end')){ const ev=($('pc_end').value||'').trim(); planCfg.end=/^\d{1,2}:\d{2}$/.test(ev)?ev:''; }
   planCfg.goal=+$('pc_goal').value||400000; planCfg.floor=+$('pc_floor').value||40000;
   planCfg.cap=Math.min(20,Math.max(2,+$('pc_cap').value||10));
   if($('pc_ret')) planCfg.ret=$('pc_ret').checked?1:0;
@@ -4144,7 +4175,7 @@ if($('pc_home')){ const hv=($('pc_home').value||'').trim();
   pane.addEventListener('click',async e=>{
    const a=e.target.closest('[data-bkacc]'), d=e.target.closest('[data-bkdel]');
    const all=e.target.closest('[data-bkaccall]'), gc=e.target.closest('[data-gapcam]'), gn=e.target.closest('[data-gapnow]');
-   if(all){ const C=bkPlanCtx_(Math.min(2,planCfg.day|0)), BB=bkPlanBest_(C), PK=BB&&BB.PK;
+   if(all){ const C=bkPlanCtx_(bkDayOff_(planCfg.day)), BB=bkPlanBest_(C), PK=BB&&BB.PK;
      if(PK&&PK.pick){ PK.pick.calls.forEach(c=>{ const b=books.find(x=>x.id===c.id); if(b) delete b.cand; }); await Store.set(KEY_BOOK,books); renderBook(); } return; }
    if(gc){ bkGapCtx=gc.dataset.gapd?{d:gc.dataset.gapd,a:+gc.dataset.gapa||0,b:+gc.dataset.gapb||0,at:Date.now()}:null;
      if(typeof bkCamSupported_==='function'&&bkCamSupported_()&&document.getElementById('cam_ov')) bkCamOpen_(); else { const cap=document.getElementById('bk_cap'); if(cap) cap.click(); } return; }
@@ -4216,6 +4247,53 @@ function bkAddrLine_(c){
  const f=c.fromAddr, t=c.toAddr; if(!f&&!t) return '';
  const pin=(ad,ok)=>ad?`${bkEsc_(ad)}${ok?' 🎯':''}`:'';
  return `<div class="mt paddr">📍 ${pin(f,c.fla!=null)||bkEsc_(c.from)} → ${pin(t,c.tla!=null)||bkEsc_(c.to)}</div>`;
+}
+
+// 날짜 탭 8개: 10.15(목) · 후보 n · 확정 x만 (선택한 날이 보이게 가로 스크롤)
+function bkDayTabs_(off){
+ const el=document.getElementById('plan_days'); if(!el) return;
+ const today=bkDayStr_(0);
+ el.innerHTML=Array.from({length:BK_DAYS},(_,i)=>{ const d=bkDayStr_(i), wd=new Date(d+'T00:00').getDay();
+  const cand=books.filter(x=>x.d===d&&x.cand&&!x.gone).length, acc=books.filter(x=>x.d===d&&!x.cand), rev=acc.reduce((t,x)=>t+(+x.fare||0),0);
+  const sub=[cand?`후보 ${cand}`:'',acc.length?`확정 ${Math.round(rev/1000)/10}만`:''].filter(Boolean).join(' · ')||(d===today?'오늘':'-');
+  return `<button id="plan_day${i}" data-pday="${i}" class="${i===off?'on':''}${wd===6?' sat':wd===0?' sun':''}">${bkDateLab_(d)}<small>${sub}</small></button>`; }).join('');
+ const on=el.querySelector('.on'); if(on&&on.scrollIntoView&&el.scrollWidth>el.clientWidth){ try{ el.scrollLeft=Math.max(0,on.offsetLeft-el.clientWidth/2+on.clientWidth/2); }catch(e){} }
+}
+
+// ── ⏱ 근무시간 선택지 (JK 10.15): 기본(퇴근 목표) · +2h · +4h · +6h · 제한 없음 — 연장하면 어떤 콜이 더 붙고 얼마가 느는지 ──
+//  연장분 시간당 = (예상 총매출 차이) ÷ (늘어난 근무 시간). 4만/h 이상이면 '연장 추천'.
+let _bkExtC={k:'',v:null};
+function bkExtOptions_(C){
+ const pool=C.nodes.filter(b=>b._s>=C.startMs-60000); if(!pool.length) return [];
+ const k=[C.day,C.startMs,books.length,books.filter(b=>!b.cand).length,books.filter(b=>b.gone).length,planCfg.end,planCfg.cap,typeof bkTmVer!=='undefined'?bkTmVer:0].join('|');
+ if(_bkExtC.k===k) return _bkExtC.v;
+ const H0=bkBaseCap_(C), lim=new Date(C.day+'T00:00').getTime()+26*3600000, Hmax=Math.max(H0,Math.round((lim-C.anchor)/360000)/10);
+ const Hs=[...new Set([H0,H0+2,H0+4,H0+6,Hmax].map(h=>Math.round(Math.min(h,Hmax)*10)/10))].sort((a,b)=>a-b);
+ const out=[]; Hs.forEach((H,i)=>{ const b=bkPlanBase_(C,H), P=bkPlanPick_(pool,b); if(!P||!P.pick) return;
+  out.push({H,unl:H===Hmax&&H>H0+6,end:b.winEnd,calls:P.pick.calls,rev:P.pick.rev,total:P.fc?P.fc.total:P.pick.rev,lastDrop:P.pick.calls.length?P.pick.calls[P.pick.calls.length-1]._end:null}); });
+ const base=out[0]; out.forEach(o=>{ o.dRev=o.rev-base.rev; o.dTot=o.total-base.total; o.dH=o.H-base.H; o.xRate=o.dH>0?Math.round(o.dTot/o.dH):null;
+  const ids=new Set(base.calls.map(c=>c.id)); o.added=o.calls.filter(c=>!ids.has(c.id)); o.dropped=base.calls.filter(c=>!o.calls.some(x=>x.id===c.id)); });
+ _bkExtC={k,v:out}; return out;
+}
+function renderExt_(C,BEST){
+ const el=document.getElementById('plan_ext'); if(!el) return;
+ const O=bkExtOptions_(C); if(!O.length){ el.hidden=true; return; }
+ const floor=planCfg.floor||40000, sel=planCfg.ext&&planCfg.ext[C.day]||null, base=O[0];
+ const li=c=>`${c.t} ${bkEsc_(String(c.from).replace(/^서울\s*/,''))}→${bkEsc_(String(c.to).replace(/^서울\s*/,''))} ${c.fare?Math.round(c.fare/1000)/10+'만':''}`;
+ const rows=O.map((o,i)=>{ const on=sel?Math.abs(sel-o.H)<0.05:i===0;
+  const nm=i===0?`기본 ~${bkHM_(o.end)} (${o.H}h)`:o.unl?`제한 없음 ~${bkHM_(o.end)}`:`+${Math.round(o.dH*10)/10}h ~${bkHM_(o.end)}`;
+  const xr=o.xRate, cls=xr==null?'':xr>=floor?'pxg':xr>=floor*0.75?'pxw':'pxb';
+  return `<div class="pxr${on?' on':''}"><div class="pxl"><b class="pxn">${nm}</b> · ${o.calls.length}콜 · 예약 ${Math.round(o.rev/1000)/10}만 · 예상 ${Math.round(o.total/1000)/10}만`+
+   (i?`<br>${o.dRev>0?`예약 +${Math.round(o.dRev/1000)/10}만`:'추가 예약 없음'}${xr!=null?` · 연장분 시간당 <b class="${cls}">${Math.round(xr/100)/10}천</b>${xr>=floor?' ✅ 연장 추천':''}`:''}`+
+    (o.added.length?`<br><span style="color:var(--dim)">+ ${o.added.slice(0,4).map(li).join(' · ')}${o.added.length>4?` 외 ${o.added.length-4}`:''}</span>`:'')+
+    (o.dropped.length?`<br><span style="color:var(--faint)">대신 빠짐: ${o.dropped.slice(0,3).map(li).join(' · ')}</span>`:''):'')+
+   `</div><button data-pext="${i?o.H:0}">${on?'보는 중':'이걸로 보기'}</button></div>`; }).join('');
+ el.innerHTML=`<div class="ph">⏱️ 근무시간 선택지 · 연장하면 얼마나 더 버나</div>`+rows+
+  `<div style="margin-top:4px;color:var(--dim);font-size:11px;line-height:1.5">연장분 시간당 = 늘어난 예상 매출(추가 예약 + 빈 시간 즉시·임박콜 예상) ÷ 늘어난 시간. 4만/h 이상이면 연장할 가치가 있습니다. 「이걸로 보기」를 누르면 위 추천·모두 수락이 그 근무시간 기준으로 바뀝니다.</div>`;
+ el.onclick=async e=>{ const b=e.target.closest('[data-pext]'); if(!b) return; planCfg.ext=planCfg.ext||{}; const H=+b.dataset.pext;
+  if(H) planCfg.ext[C.day]=H; else delete planCfg.ext[C.day];
+  Object.keys(planCfg.ext).forEach(d=>{ if(d<bkDayStr_(0)) delete planCfg.ext[d]; });
+  try{ await Store.set(KEY_PLANCFG,planCfg); }catch(err){} renderPlan_(); };
 }
 
 /* ─── 바로 촬영: 앱 안 카메라로 예약콜 화면을 연속 촬영 → 즉시 분석·판정 ───
@@ -4319,7 +4397,7 @@ let bkCamPK={k:'',v:null};
 function bkCamChain_(day){
  const t0=new Date(bkDayStr_(0)+'T00:00'), off=Math.round((new Date(day+'T00:00')-t0)/86400000);
  if(off<0) return null;
- const k=day+'|'+books.length+'|'+books.filter(b=>!b.cand).length+'|'+books.filter(b=>b.gone).length+'|'+bkQ.done+'|'+bkTmVer;
+ const k=day+'|'+books.length+'|'+books.filter(b=>!b.cand).length+'|'+books.filter(b=>b.gone).length+'|'+bkQ.done+'|'+bkTmVer+'|'+JSON.stringify(planCfg.ext||{})+planCfg.end;
  if(bkCamPK.k===k) return bkCamPK.v;
  const C=bkPlanCtx_(off), BB=bkPlanBest_(C), PK=BB&&BB.PK;
  const v=PK&&PK.pick?{C,r:PK.pick,cfg:PK.cfg}:null; bkCamPK={k,v}; return v;
