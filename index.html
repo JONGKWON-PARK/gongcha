@@ -114,6 +114,11 @@ header .clk{margin-left:auto;font-size:15px}
 .pday button small{display:block;font-size:10px;font-weight:400;color:var(--faint)}
 .pday button.on small{color:var(--amber)}
 .pday button.sat{color:#6aa6ff}.pday button.sun{color:#ff6b6b}
+.nowbox{margin:8px 0;border:1px solid var(--occ);border-radius:8px;padding:8px 9px;background:rgba(61,220,132,.05)}
+.nowbox .ph{font-size:12.5px;margin-bottom:4px}
+.nowrow{position:relative;border-left:3px solid var(--line);padding:5px 74px 5px 8px;margin:4px 0;font-size:12.5px;line-height:1.45}
+.nowrow .pacc{position:absolute;right:4px;top:50%;transform:translateY(-50%);padding:6px 9px;font:inherit;font-size:11.5px;font-weight:700;background:transparent;border:1px solid var(--occ);color:var(--occ);border-radius:6px}
+.camres .nowbox{background:rgba(0,0,0,.35)}
 .pextbox{margin:8px 0 2px;border:1px solid var(--line);border-radius:8px;padding:8px 9px;background:var(--panel)}
 .pextbox .ph{font-size:12.5px;font-weight:700;margin-bottom:4px}
 .pxr{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:12px;line-height:1.45}
@@ -3854,6 +3859,46 @@ function bkConnStats_(days){
  return {n:G.length,h,top:h.map((v,i)=>({h:i,v})).filter(x=>x.v>=2).sort((a,b)=>b.v-a.v).slice(0,3).sort((a,b)=>a.h-b.h),lead:leads.length?leads[leads.length>>1]:null};
 }
 
+// ══════════ 📍 지금 위치(GPS)에서 바로 갈 수 있는 콜 (JK 10.16: 현장에서 사진 올렸는데 빈 시간 추천이 안 나옴) ══════════
+//  사진을 찍은 그 순간의 GPS 위치에서 → 2시간 안에 출발하는 오늘 후보(임박·일반)를 하나씩: 지금 출발하면 제때 도착하나,
+//  그 콜을 하고 나서 다음 수락 예약 픽업에 늦지 않나(선도착 10분 포함)를 계산해 '바로 이동' 추천. 끝나는 곳이 다음 예약 쪽이면 가점.
+function bkNowFits_(opt){
+ opt=opt||{}; const now=opt.now||Date.now(), today=bkDayStr_(0);
+ const gpsOK=typeof cur!=='undefined'&&cur&&typeof pos!=='undefined'&&pos&&!(typeof window!=='undefined'&&window.__posFallback);
+ if(!gpsOK&&!opt.at) return {ok:false,why:'GPS 위치를 아직 못 받았습니다',list:[]};
+ const at=opt.at||{la:pos.la,lo:pos.lo,v:(cur&&cur.v)||null,n:cur&&cur.n};
+ if(typeof occupied!=='undefined'&&occupied&&!opt.at) return {ok:false,why:'손님 탑승 중',list:[]};
+ const nodes=books.filter(b=>b.d===today&&!b.gone).map(bkNode_);
+ const done=new Set((typeof trips!=='undefined'?trips:[]).map(t=>t.bookId).filter(Boolean));
+ const acc=nodes.filter(b=>!b.cand&&b._geo&&!done.has(b.id)&&b._end>now).sort((a,b)=>a._s-b._s);
+ const nextAcc=acc.find(b=>b._s>now)||null;
+ const out=[];
+ nodes.filter(b=>b.cand&&b._geo&&b._s>=now-5*60000&&b._s<=now+(opt.horizon||150)*60000).forEach(c=>{
+  const dIn=bkTravelT_(at,c._f,now,true)||{m:0,km:0}, arrive=now+dIn.m*60000, slackIn=Math.round((c._s-arrive)/60000);
+  if(slackIn<-3) return;                                                     // 지금 출발해도 픽업에 늦음
+  const block=acc.find(a=>a._s>=now&&a._s<c._s+1);      // 이 콜 픽업 전에 수락 예약이 먼저 있음 → '지금 바로'가 아님 (그 예약 뒤 빈 칸에서 따로 판정)
+  if(block) return;
+  const nx=acc.find(a=>a._s>=c._s);
+  let slackOut=null, dOut=null;
+  if(nx){ dOut=bkTravelT_(c._t,nx._f,c._end)||{m:0}; slackOut=Math.round((nx._s-BK_LEAD*60000-(c._end+dOut.m*60000))/60000); }
+  const tied=dIn.m+Math.max(0,slackIn)+c._ride+(dOut?dOut.m:0);
+  const rate=c.fare>0?Math.round(c.fare/Math.max(10,tied)*60):0;
+  out.push({c,dIn:dIn.m,km:dIn.km,arrive,slackIn,nx,dOut:dOut?dOut.m:null,slackOut,fits:!block&&(slackOut==null||slackOut>=0),block:block||null,rate,imm:!!c.imm});
+ });
+ out.sort((a,b)=>(b.fits-a.fits)||(b.rate-a.rate));
+ return {ok:true,at,now,nextAcc,list:out};
+}
+// 승객 탑승 때 예약 자동 연결 (JK 10.16: 13:30 명동 예약을 '운행'을 안 누르고 태워 즉시콜로 기록됨)
+//  오늘 수락한 예약 중 아직 안 탄 것, 픽업 시각 ±25분 안, 지금 위치가 픽업지 2km 안이면 그 예약으로 기록
+function bkAutoArm_(nowMs){
+ const now=nowMs||Date.now(), today=bkDayStr_(0), used=new Set((typeof trips!=='undefined'?trips:[]).map(t=>t.bookId).filter(Boolean));
+ const P=(typeof pos!=='undefined'&&pos&&!(typeof window!=='undefined'&&window.__posFallback))?pos:null;
+ const C=books.filter(b=>b.d===today&&!b.cand&&!b.gone&&!used.has(b.id)).map(b=>{ const s=bkStart(b), dt=Math.abs(s-now)/60000; if(dt>25) return null;
+   let km=null; try{ const g=b.fla!=null?{la:b.fla,lo:b.flo}:bkGeo_(b.from); const gg=g&&g.alts?g.alts[0]:g; if(P&&gg) km=dist(P.la,P.lo,gg.la,gg.lo); }catch(e){}
+   if(km!=null&&km>2) return null; return {b,dt,km}; }).filter(Boolean).sort((a,b)=>a.dt-b.dt);
+ return C.length?C[0].b:null;
+}
+
 function renderBook(){
  const up=books.filter(b=>!b.cand&&bkEnd(b)>Date.now()-3600000).sort((a,b)=>bkStart(a)-bkStart(b));
  let accN=[]; try{ accN=up.map(bkNode_); }catch(e){}
@@ -4133,6 +4178,7 @@ function renderPlan_(){
  tl.innerHTML=h;
  // 적극 제안
  let u='';
+ if(C.isToday){ try{ u+=bkNowFitsHtml_(); }catch(e){} }
  const recN=r.calls.filter(c=>c.cand).length, ST=PK.street;
  // 📸 마지막 사진 묶음 비교 (새 콜 · 이미 있던 콜 · 사라진 콜 → 이 날 추천이 어떻게 바뀌었나)
  { const LB=bkLastBatch; if(LB&&Date.now()-LB.end<6*3600000){
@@ -4504,6 +4550,23 @@ function bkLedgerPaint_(){
    b.style.backgroundSize='100% 3px'; b.style.backgroundRepeat='no-repeat'; b.style.backgroundPosition='bottom'; b.title=`${x.d} 확정 ${fmt(x.acc)} + 추천 ${fmt(x.rec)} / ${fmt(goal)}`; }); }catch(e){} },600);
 }
 
+// 📍 지금 바로 이동 가능한 콜 — 플랜(오늘)·카메라 결과 공통 HTML
+function bkNowFitsHtml_(o){
+ o=o||{}; let R; try{ R=bkNowFits_(); }catch(e){ return ''; }
+ if(!R.ok) return o.cam?`<div class="camhint">📍 ${bkEsc_(R.why)} — 위치가 잡히면 지금 바로 갈 수 있는 콜을 보여 드립니다</div>`:'';
+ const L=R.list; if(!L.length) return o.cam?`<div class="camhint">📍 지금 위치(${bkEsc_(R.at.n||'현재')})에서 2시간 안에 출발하는 오늘 후보가 없습니다 — 임박콜 화면을 찍어 주세요</div>`:'';
+ const fit=L.filter(x=>x.fits), bad=L.filter(x=>!x.fits);
+ const nx=R.nextAcc;
+ const row=x=>{ const c=x.c, col=x.fits?(x.rate>=(planCfg.floor||40000)?'occ':'amber'):'vac';
+  const nxt=x.nx?(x.slackOut>=0?`다음 예약 ${x.nx.t} ${bkEsc_(String(x.nx.from).replace(/^서울\s*/,''))}까지 여유 <b>${x.slackOut}분</b>`:`다음 예약 ${x.nx.t} ${bkEsc_(String(x.nx.from).replace(/^서울\s*/,''))}에 <b>${-x.slackOut}분 늦음</b>`):'뒤에 수락 예약 없음';
+  return `<div class="nowrow" style="border-left-color:var(--${col})"><div class="nr1">${c.imm?'<span class="pimm">임박</span> ':''}<b>${c.t}</b> ${bkEsc_(String(c.from).replace(/^서울\s*/,''))} → ${bkEsc_(String(c.to).replace(/^서울\s*/,''))} · <b>${c.fare?fmt(c.fare):'요금?'}</b></div>`+
+   `<div class="mt">지금 출발 공차 ${x.dIn}분(${(x.km||0).toFixed(1)}km) → ${bkHM_(x.arrive)} 도착 · 픽업 여유 ${Math.max(0,x.slackIn)}분 · 운행 ~${c._ride}분 · ${nxt}${x.rate?` · 실효 ${fmt(x.rate)}/h`:''}${x.block?` · ⚠️ 그 전에 수락 예약 ${x.block.t}`:''}</div>`+
+   (c.cand?`<button class="pacc" data-bkacc="${c.id}" data-camacc="${c.id}">수락함</button>`:'')+`</div>`; };
+ return `<div class="nowbox"><div class="ph">📍 지금 위치(${bkEsc_(R.at.n||'GPS')}, ${bkHM_(R.now)})에서 바로 갈 수 있는 콜 — <b>${fit.length}건</b>${nx?` · 다음 수락 예약 ${nx.t} ${bkEsc_(String(nx.from).replace(/^서울\s*/,''))}`:''}</div>`+
+  (fit.length?fit.slice(0,o.cam?4:5).map(row).join(''):`<div class="mt">지금 위치에서 제때 가면서 다음 예약에도 늦지 않는 콜이 없습니다${bad.length?` (가까운 후보 ${bad.length}건은 다음 예약과 겹침)`:''} — 임박콜 화면을 더 찍어 주세요</div>`)+
+  (bad.length&&fit.length<3?`<div class="mt" style="color:var(--faint)">다음 예약과 겹치는 후보: ${bad.slice(0,3).map(x=>`${x.c.t} ${bkEsc_(String(x.c.from).replace(/^서울\s*/,''))} ${x.slackOut!=null&&x.slackOut<0?-x.slackOut+'분 늦음':'예약 겹침'}`).join(' · ')}</div>`:'')+`</div>`;
+}
+
 /* ─── 바로 촬영: 앱 안 카메라로 예약콜 화면을 연속 촬영 → 즉시 분석·판정 ───
    시간 싸움이라 탭 수를 최소로: [📷 이미지 올리기] 한 번 → 카메라가 바로 열림 → 셔터만 연속으로 누름.
    · 찍는 동안 앞 사진은 뒤에서 분석(최대 3장 동시) — 셔터가 분석을 기다리지 않음
@@ -4642,6 +4705,8 @@ function bkCamPaint_(){
  const row=(c,col,lab,sub,btn)=>`<div class="camrow" style="border-left-color:var(--${col})"><div class="cr1"><b style="color:var(--${col})">${lab}</b> `+
   `<span>${dl(c.d)}${c.t} ${bkEsc_(c.from)} → ${bkEsc_(c.to)}</span><b class="cf">${c.fare?fmt(c.fare):'요금?'}</b></div><div class="cr2">${sub}</div>${btn}</div>`;
  let h=cmp;
+ if(got.some(c=>c.d===bkDayStr_(0))||day===bkDayStr_(0)){ try{ h+=bkNowFitsHtml_({cam:1}); }catch(e){} }   // 찍은 순간 GPS 기준 바로 갈 수 있는 콜
+ if(got.some(c=>c.d===bkDayStr_(0))||day===bkDayStr_(0)){ try{ h+=bkNowFitsHtml_({cam:1}); }catch(e){} }   // 찍은 순간 GPS 기준 바로 갈 수 있는 콜
  // 빈 시간에서 연 카메라: 그 빈 시간에 들어가는 콜을 맨 위에 (연결 기여순)
  if(gx&&gx.d===day&&P){
   const i=gx.b?P.r.calls.findIndex(c=>c._s>=gx.b):-1, pos=i<0?P.r.calls.length:i;
@@ -5248,7 +5313,9 @@ async function bkSaveCands_(arr){
  bkPruneCands_();
  const seen=new Set(books.map(key)); let added=0,dup=0,addrUp=0; const ids=[];
  const hm=t=>{const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?m[1].padStart(2,'0')+':'+m[2]:'';};
+ let past=0; const nowMs=Date.now();
  for(const b of arr){ const t=hm(b&&b.t); if(!t||!(b.from||b.to)) continue;
+  { const dd=/^\d{4}-\d{2}-\d{2}$/.test(b.d||'')?b.d:bkDefaultDay_(b); if(new Date(`${dd}T${t}`).getTime()<nowMs-10*60000){ past++; continue; } }   // 이미 지난 콜(옛 사진·날짜 착오)은 저장 안 함
   const rec={id:'b'+Date.now()+Math.random().toString(36).slice(2,6),
     d:/^\d{4}-\d{2}-\d{2}$/.test(b.d||'')?b.d:bkDefaultDay_(b),t,
     from:String(b.from||'').trim(),to:String(b.to||'').trim(),name:String(b.name||'').trim(),
@@ -5265,7 +5332,7 @@ async function bkSaveCands_(arr){
   if(ex){dup++;} else { seen.add(k); rec.seen=Date.now(); books.push(rec); ids.push(rec.id); added++; } }
  try{ bkSeenSave_(); }catch(e){}
  if(added||addrUp) await Store.set(KEY_BOOK,books);
- return {added,dup,ids,addrUp};
+ return {added,dup,ids,addrUp,past};
 }
 // 지난 후보(어제 이전)는 지우고, 후보는 최대 1,500건까지만 — 수락한 예약은 건드리지 않음
 function bkPruneCands_(){
@@ -8906,6 +8973,7 @@ async function togRun(){
    daycontext:dayContext(), events:todayEvents.slice(),
    kind: armedBook ? 'reserved' : 'instant'};
   // 예약콜로 시작한 운행이면 예약 정보를 함께 기록 (매출 분리 분석용)
+  if(!armedBook){ try{ const ab=bkAutoArm_(); if(ab){ armedBook=ab; nt.kind='reserved'; nt.autoArm=true; } }catch(e){} }   // '운행'을 안 눌러도 시각·위치가 맞는 수락 예약이면 자동 연결
   if(armedBook){
    nt.bookId=armedBook.id;
    nt.bookPeak=armedBook.peak||null;
