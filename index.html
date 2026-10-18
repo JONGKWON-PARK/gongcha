@@ -1593,7 +1593,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   <input id="cloud_url" placeholder="https://script.google.com/macros/s/..../exec" autocomplete="off" spellcheck="false">
   <div style="display:flex;gap:6px;margin-top:6px">
     <div style="flex:1.3"><div class="glab">기사 ID (구분용)</div><input id="cloud_driver" placeholder="예: 박종권 또는 car01" autocomplete="off"></div>
-    <div style="flex:1"><div class="glab">전송 암호(선택)</div><input id="cloud_token" placeholder="웹앱과 동일" autocomplete="off"></div>
+    <div style="flex:1"><div class="glab">전송 암호(선택)</div><input id="cloud_token" placeholder="서버 TOKEN과 똑같이 (예: 박종권)" autocomplete="off"></div>
   </div>
   <div id="cloud_stat" class="note2" style="margin:7px 0 4px;font-size:10.5px"></div>
   <div style="display:flex;gap:6px;margin:0 0 8px">
@@ -8258,9 +8258,11 @@ async function cloudDiagnose(){
   L.push(`✓ 서버 연결됨 · v${d.version||'?'} · 암호 ${d.tokenOk?'<span style="color:var(--occ)">일치</span>':'<span style="color:var(--vac)">불일치 — 앱 전송 암호를 서버 TOKEN과 똑같이</span>'}`);
   if((+d.version||0)<4) L.push(`<span style="color:var(--amber)">📚 학습 서버(v4)로 바꾸면 매일 새벽 4시에 드라이브 전체 기록으로 예약콜 예측·즉시콜 대기표를 다시 계산해 앱으로 받아옵니다 — gongcha_appsscript_v4.gs로 교체</span>`);
   else { try{ bkModelFetch_(true).then(ok=>{ if(ok){ try{ renderBook(); }catch(e){} } }); }catch(e){} }
-  if(d.last) L.push(`마지막 저장: ${String(d.last.time).slice(5,16).replace('T',' ')} · ${d.last.file}`); else L.push('서버에 저장 기록 없음');
-  if(d.lastError) L.push(`<span style="color:var(--amber)">서버 마지막 오류: ${String(d.lastError.time).slice(5,16).replace('T',' ')} ${d.lastError.msg}</span>`);
-  L.push(d.dailyTrigger?`매일 새벽 4시 자동 검토 켜짐${d.review?` · 마지막 검토 ${String(d.review.time).slice(5,16).replace('T',' ')} (${d.review.days}일, 누락 ${d.review.missing}일)`:''}`:'<span style="color:var(--amber)">자동 검토 꺼짐 — Apps Script에서 installDailyTrigger 한 번 실행</span>');
+  const kt=s=>{ const x=new Date(s); return isNaN(x)?String(s).slice(5,16):`${x.getMonth()+1}.${String(x.getDate()).padStart(2,'0')} ${String(x.getHours()).padStart(2,'0')}:${String(x.getMinutes()).padStart(2,'0')}`; };
+  if(d.last) L.push(`마지막 저장: ${kt(d.last.time)} · ${d.last.file}`); else L.push('서버에 저장 기록 없음');
+  if(d.lastError){ const fixed=d.last&&new Date(d.last.time)>new Date(d.lastError.time);
+   L.push(fixed?`<span style="color:var(--faint)">지난 오류(해결됨): ${kt(d.lastError.time)} ${d.lastError.msg} — 그 뒤 저장 성공</span>`:`<span style="color:var(--amber)">서버 마지막 오류: ${kt(d.lastError.time)} ${d.lastError.msg}</span>`); }
+  L.push(d.dailyTrigger?`매일 새벽 4시 자동 검토 켜짐${d.review?` · 마지막 검토 ${kt(d.review.time)} (${d.review.days}일, 누락 ${d.review.missing}일)`:''}`:'<span style="color:var(--amber)">자동 검토 꺼짐 — Apps Script에서 installDailyTrigger 한 번 실행</span>');
   const l=await cloudJsonp({action:'list',token:cloud.token||''},15000);
   if(l.ok&&l.data&&l.data.files) L.push('드라이브 최근 파일: '+l.data.files.slice(0,4).map(f=>f.n.replace(/^공차_.*?_/,'').replace('.json','')).join(', ')+` (총 ${l.data.total}개)`); }
  if((cloud.outbox||[]).length) L.push(`<span style="color:var(--amber)">앱에 미전송 ${cloud.outbox.length}일: ${cloud.outbox.slice(0,5).join(', ')}</span>`);
