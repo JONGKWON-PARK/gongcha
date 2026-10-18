@@ -5204,6 +5204,7 @@ function bkCamSupported_(){ return !!(navigator.mediaDevices&&navigator.mediaDev
 async function bkCamOpen_(mine){
  bkCamMine=!!mine;   // ⚡ 배차화면 모드는 운전 화면 버튼에서만
  const $=id=>document.getElementById(id), ov=$('cam_ov');
+ if(ov&&ov.parentNode!==document.body) document.body.appendChild(ov);   // 예약 탭 밖(운전 화면 📷 배차화면)에서 열어도 보이게 — 숨은 탭 안에 있으면 화면에 안 나옴
  bkQReset_(); bkQ.onUpdate=bkCamPaintSoon_; _bkShotWait=0;
  ov.hidden=false; document.body.classList.add('camlock');
  $('cam_note').textContent=bkCamMine?'⚡ 수락한 임박콜의 배차 완료 화면을 찍으세요 — 찍으면 바로 내 수락 예약으로 저장, 탑승 때 자동 연결':geminiKey?'예약콜 화면이 꽉 차게 맞추고 셔터를 연속으로 누르세요':'AI 키가 없어 한 장씩 글자인식(느림)으로 처리합니다 — ⚙ AI 사진인식 설정에서 키를 넣으면 연속 촬영';
