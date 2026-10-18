@@ -1128,6 +1128,8 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 .lrt th{color:var(--faint);font-weight:400;padding:2px}
 .lrt td{padding:2px;border-top:1px solid var(--line);color:var(--dim)}
 .lrt td.ok{color:var(--occ)} .lrt td.bad{color:var(--vac)}
+.nowbox>.mt{font-size:11.5px;color:var(--dim);margin:3px 0}
+.nowbox>.ban{display:inline-block;margin:3px 0}
 </style></head><body>
 
 <header><div class="mark">공차</div><div class="st" id="stt">빈차</div><button class="hdrbtn" id="addspot">+ 내 지점</button><button class="hdrbtn" id="wlk" title="화면 켜짐 유지">화면</button><button class="hdrbtn" id="opset">설정</button><div class="clk mono" id="clk">--:--</div></header>
@@ -4084,8 +4086,25 @@ function bkNowFits_(opt){
   const rate=c.fare>0?Math.round(c.fare/Math.max(10,tied)*60):0;
   out.push({c,dIn:dIn.m,km:dIn.km,arrive,slackIn,nx,dOut:dOut?dOut.m:null,slackOut,fits:!block&&(slackOut==null||slackOut>=0),block:block||null,rate,imm:!!c.imm});
  });
- out.sort((a,b)=>(b.fits-a.fits)||(b.rate-a.rate));
- return {ok:true,at,now,nextAcc,list:out};
+ // ── 빈칸 채우기 관점 (JK 10.18): '지금 갈 수 있는 콜'은 다음 수락 예약(없으면 근무 끝)까지의 빈칸을 얼마나 채우고, 뒤로 이어지나로 고른다 ──
+ let C0=null, planIds=new Set(); try{ C0=bkPlanCtx_(0); const B0=bkPlanBest_(C0); if(B0) B0.PK.pick.calls.forEach(c=>{ if(c.cand) planIds.add(c.id); }); }catch(e){}
+ const endMs=nextAcc?nextAcc._s:(C0?Math.min(C0.winEnd,new Date(`${today}T23:59`).getTime()):now+180*60000), gapMin=Math.max(0,Math.round((endMs-now)/60000));
+ const K=bkKpiCfg_()||{gapT:15,cut:30,safe:bkImmSafe_()}, cands=nodes.filter(b=>b.cand&&b._geo&&b._s>now);
+ out.forEach(x=>{ const c=x.c;
+  x.empty=Math.round(gapMin-(c._ride||0));                    // 이 콜을 타도 빈칸에 남는 공차(이동+대기)
+  x.inPlan=planIds.has(c.id);
+  if(!x.nx){ // 뒤에 수락 예약이 없으면: 내린 곳에서 60분 안에 이어 탈 후보가 있나
+   x.cont=cands.filter(y=>y.id!==c.id&&y._s>c._end&&y._s<=c._end+60*60000&&c._end+(bkTravelT_(c._t,y._f,c._end).m+BK_LEAD)*60000<=y._s).length; }
+  x.score=(x.inPlan?1e6:0)+(c.fare||0)-600*(x.dIn+Math.max(0,x.slackIn))-(x.nx&&x.slackOut!=null?300*Math.max(0,x.slackOut-K.gapT):0)+(x.cont?3000*Math.min(3,x.cont):0); });
+ out.sort((a,b)=>(b.fits-a.fits)||(b.score-a.score));
+ // 2콜로 빈칸 채우기: 지금 → X → Y → (다음 예약)
+ let pair=null; const F=out.filter(x=>x.fits).slice(0,12);
+ F.forEach(x=>{ cands.forEach(y=>{ if(y.id===x.c.id||y._s<=x.c._end) return; const t1=bkTravelT_(x.c._t,y._f,x.c._end); if(x.c._end+(t1.m+BK_LEAD)*60000>y._s) return;
+   if(nextAcc){ const t2=bkTravelT_(y._t,nextAcc._f,y._end); if(y._end+(t2.m+BK_LEAD+BK_ERR)*60000>nextAcc._s) return; } else if(y._s>endMs) return;
+   const empty=Math.round(gapMin-(x.c._ride||0)-(y._ride||0)), fare=(x.c.fare||0)+(y.fare||0);
+   if(!pair||fare-600*empty>pair.fare-600*pair.empty) pair={x,y,fare,empty}; }); });
+ if(pair&&out[0]&&out[0].fits&&pair.fare-600*pair.empty<=(out[0].c.fare||0)-600*out[0].empty) pair=null;   // 1콜보다 나을 때만
+ return {ok:true,at,now,nextAcc,list:out,gapMin,endMs,pair,safe:K.safe,gapT:K.gapT};
 }
 // 승객 탑승 때 예약 자동 연결 (JK 10.16: 13:30 명동 예약을 '운행'을 안 누르고 태워 즉시콜로 기록됨)
 //  오늘 수락한 예약 중 아직 안 탄 것, 픽업 시각 ±25분 안, 지금 위치가 픽업지 2km 안이면 그 예약으로 기록
@@ -5073,18 +5092,23 @@ function bkLedgerPaint_(){
 // 📍 지금 바로 이동 가능한 콜 — 플랜(오늘)·카메라 결과 공통 HTML
 function bkNowFitsHtml_(o){
  o=o||{}; let R; try{ R=bkNowFits_(); }catch(e){ return ''; }
- if(!R.ok) return o.cam?`<div class="camhint">📍 ${bkEsc_(R.why)} — 위치가 잡히면 지금 바로 갈 수 있는 콜을 보여 드립니다</div>`:'';
- const L=R.list; if(!L.length) return o.cam?`<div class="camhint">📍 지금 위치(${bkEsc_(R.at.n||'현재')})에서 2시간 안에 출발하는 오늘 후보가 없습니다 — 임박콜 화면을 찍어 주세요</div>`:'';
+ if(!R.ok) return o.cam?`<div class="camhint">📍 ${bkEsc_(R.why)} — 위치가 잡히면 지금 빈칸에 넣을 콜을 보여 드립니다</div>`:'';
+ const L=R.list, nm=x=>bkEsc_(String(x||'').replace(/^(서울|경기|인천)\s*/,'')), nx=R.nextAcc;
  const fit=L.filter(x=>x.fits), bad=L.filter(x=>!x.fits);
- const nx=R.nextAcc;
- const row=x=>{ const c=x.c, col=x.fits?(x.rate>=(planCfg.floor||40000)?'occ':'amber'):'vac';
-  const nxt=x.nx?(x.slackOut>=0?`다음 예약 ${x.nx.t} ${bkEsc_(String(x.nx.from).replace(/^서울\s*/,''))}까지 여유 <b>${x.slackOut}분</b>`:`다음 예약 ${x.nx.t} ${bkEsc_(String(x.nx.from).replace(/^서울\s*/,''))}에 <b>${-x.slackOut}분 늦음</b>`):'뒤에 수락 예약 없음';
-  return `<div class="nowrow" style="border-left-color:var(--${col})"><div class="nr1">${c.imm?'<span class="pimm">임박</span> ':''}<b>${c.t}</b> ${bkEsc_(String(c.from).replace(/^서울\s*/,''))} → ${bkEsc_(String(c.to).replace(/^서울\s*/,''))} · <b>${c.fare?fmt(c.fare):'요금?'}</b></div>`+
-   `<div class="mt">지금 출발 공차 ${x.dIn}분(${(x.km||0).toFixed(1)}km) → ${bkHM_(x.arrive)} 도착 · 픽업 여유 ${Math.max(0,x.slackIn)}분 · 운행 ~${c._ride}분 · ${nxt}${x.rate?` · 실효 ${fmt(x.rate)}/h`:''}${x.block?` · ⚠️ 그 전에 수락 예약 ${x.block.t}`:''}</div>`+
+ // 머리: 지금 빈칸 = 지금(GPS) → 다음 수락 예약 픽업(없으면 근무 끝)
+ const ban=nx?(R.gapMin<R.safe?`<span class="ban">⛔ 즉시콜 금지 (빈 ${R.gapMin}분 &lt; 안전 ${R.safe}분)</span>`:`<div class="mt">⚡ 즉시콜은 1건만, 가까운 목적지로 (${bkHM_(R.endMs-(BK_LEAD+30)*60000)}까지 하차)</div>`):'';
+ let h=`<div class="nowbox"><div class="ph">🧩 지금 빈칸 채우기 — 지금(${bkEsc_(R.at.n||'GPS')}, ${bkHM_(R.now)}) → ${nx?`다음 예약 <b>${nx.t} ${nm(nx.from)}</b> 픽업`:'근무 끝 '+bkHM_(R.endMs)} · 빈 <b>${R.gapMin}분</b></div>${ban}`;
+ if(!L.length) return o.cam||nx?h+`<div class="mt">이 빈칸에 넣을 후보가 아직 없습니다 — 임박콜·이 시간대 예약 목록을 찍어 주세요</div></div>`:'';
+ const row=x=>{ const c=x.c, col=x.fits?(x.empty<=R.gapT?'occ':'amber'):'vac';
+  const tail=x.nx?(x.slackOut>=0?`하차 ${bkHM_(c._end)} → 다음 예약까지 여유 <b>${x.slackOut}분</b>`:`다음 예약에 <b>${-x.slackOut}분 늦음</b>`):(x.cont?`하차 ${bkHM_(c._end)} · 🔗 내린 곳에서 이어 탈 후보 <b>${x.cont}건</b>`:`하차 ${bkHM_(c._end)} · 이어 탈 후보 없음`);
+  return `<div class="nowrow" style="border-left-color:var(--${col})"><div class="nr1">${x.inPlan?'⭐ ':''}${c.imm?'<span class="pimm">임박</span> ':''}<b>${c.t}</b> ${nm(c.from)} → ${nm(c.to)} · <b>${c.fare?fmt(c.fare):'요금?'}</b></div>`+
+   `<div class="mt">지금 출발 공차 ${x.dIn}분 → 픽업 여유 ${Math.max(0,x.slackIn)}분 · 운행 ~${c._ride}분 · ${tail} · 빈칸에 남는 공차 <b>${Math.max(0,x.empty)}분</b>${x.inPlan?' · 하루 플랜 추천':''}${x.block?` · ⚠️ 그 전에 수락 예약 ${x.block.t}`:''}</div>`+
    (c.cand?`<button class="pacc" data-bkacc="${c.id}" data-camacc="${c.id}">수락함</button>`:'')+`</div>`; };
- return `<div class="nowbox"><div class="ph">📍 지금 위치(${bkEsc_(R.at.n||'GPS')}, ${bkHM_(R.now)})에서 바로 갈 수 있는 콜 — <b>${fit.length}건</b>${nx?` · 다음 수락 예약 ${nx.t} ${bkEsc_(String(nx.from).replace(/^서울\s*/,''))}`:''}</div>`+
-  (fit.length?fit.slice(0,o.cam?4:5).map(row).join(''):`<div class="mt">지금 위치에서 제때 가면서 다음 예약에도 늦지 않는 콜이 없습니다${bad.length?` (가까운 후보 ${bad.length}건은 다음 예약과 겹침)`:''} — 임박콜 화면을 더 찍어 주세요</div>`)+
-  (bad.length&&fit.length<3?`<div class="mt" style="color:var(--faint)">다음 예약과 겹치는 후보: ${bad.slice(0,3).map(x=>`${x.c.t} ${bkEsc_(String(x.c.from).replace(/^서울\s*/,''))} ${x.slackOut!=null&&x.slackOut<0?-x.slackOut+'분 늦음':'예약 겹침'}`).join(' · ')}</div>`:'')+`</div>`;
+ if(R.pair){ const P=R.pair; h+=`<div class="nowrow" style="border-left-color:var(--occ)"><div class="nr1">⭐ 2콜로 채우기: <b>${P.x.c.t}</b> ${nm(P.x.c.from)}→${nm(P.x.c.to)} → <b>${P.y.t}</b> ${nm(P.y.from)}→${nm(P.y.to)} · <b>${fmt(P.fare)}</b></div><div class="mt">빈칸에 남는 공차 <b>${Math.max(0,P.empty)}분</b>${nx?` · ${nx.t} 예약에 늦지 않음`:''}</div>`+
+   `<button class="pacc" data-bkacc="${P.x.c.id}" data-camacc="${P.x.c.id}">수락함</button></div>`; }
+ h+=fit.length?fit.slice(0,o.cam?3:4).map(row).join(''):`<div class="mt">지금 출발해서 제때 가고 다음 예약에도 늦지 않는 콜이 없습니다${bad.length?` (가까운 후보 ${bad.length}건은 다음 예약과 겹침)`:''} — 임박콜 화면을 더 찍어 주세요</div>`;
+ if(bad.length&&fit.length<3) h+=`<div class="mt" style="color:var(--faint)">다음 예약과 겹치는 후보: ${bad.slice(0,3).map(x=>`${x.c.t} ${nm(x.c.from)} ${x.slackOut!=null&&x.slackOut<0?-x.slackOut+'분 늦음':'예약 겹침'}`).join(' · ')}</div>`;
+ return h+`</div>`;
 }
 
 // ══ 🧩 빈 시간 채우기: 확정 예약 사이 빈칸마다 맞는 후보 + KPI (사진 올린 직후 바로 보는 단순 화면) ══
