@@ -1134,6 +1134,8 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 .gaprow.fsel button,.pcum .pfst{margin-left:6px;padding:2px 8px;font:inherit;font-size:11px;background:transparent;border:1px solid var(--amber);color:var(--amber);border-radius:5px}
 .gaprow.kpi{color:var(--occ);font-weight:700;font-size:12px;border-left:3px solid var(--occ);padding-left:8px}
 .pcum{color:var(--dim)}
+.prush{color:var(--amber)}.prush.warn{color:var(--vac);font-weight:600}
+.pbusy #plan_tl{opacity:.45;transition:opacity .1s}
 </style></head><body>
 
 <header><div class="mark">공차</div><div class="st" id="stt">빈차</div><button class="hdrbtn" id="addspot">+ 내 지점</button><button class="hdrbtn" id="wlk" title="화면 켜짐 유지">화면</button><button class="hdrbtn" id="opset">설정</button><div class="clk mono" id="clk">--:--</div></header>
@@ -4514,7 +4516,7 @@ function renderBook(){
     ${c.tel?'<span style="color:var(--faint);font-size:11px">'+c.tel+'</span>':''}</span>
    <em>${c.n}회</em><b class="mono">${fmt(Math.round(c.sum/c.n))}</b></div>`).join('');
  document.querySelectorAll('[data-cu]').forEach(x=>x.onclick=()=>openCust(x.dataset.cu));
- try{ renderPlan_(); }catch(e){ try{document.getElementById('plan_sec').hidden=true;}catch(_){} }
+ clearTimeout(window._bkRPT); window._bkRPT=setTimeout(()=>{ try{ renderPlan_(); }catch(e){ try{document.getElementById('plan_sec').hidden=true;}catch(_){} } },0);
 }
 /* ─── 오늘의 플랜 · 후보 콜 · 업로드 시간대 · 확인 알림 (예약 탭) ─── */
 const bkHM_=ms=>{const d=new Date(ms);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
@@ -4650,7 +4652,7 @@ function renderPlan_(){
  const sec=document.getElementById('plan_sec'); if(!sec) return;
  sec.hidden=false;
  try{ bkExpire_(); }catch(e){}   // 픽업이 지난 후보는 화면·계산에서 바로 뺌(등장 기록엔 보관)
- try{ renderFill_(); }catch(e){}   // 🧩 빈 시간 채우기 · KPI (사진 올리는 버튼 바로 아래)
+ clearTimeout(window._bkFillT); window._bkFillT=setTimeout(()=>{ try{ renderFill_(); }catch(e){} },0);   // 🧩 빈 시간 채우기 · KPI — 플랜을 먼저 그리고 다음 차례에 (버튼이 먹통이 되지 않게 계산을 나눔)
  const off=bkDayOff_(planCfg.day); let C=bkPlanCtx_(off);
  try{ renderTiles_(C); }catch(e){}
  try{ renderTT_(); }catch(e){}
@@ -4984,7 +4986,7 @@ function initPlan_(){
   if($('pc_home')) $('pc_home').value=planCfg.home||'';
   if($('pc_ret')) $('pc_ret').checked=!!planCfg.ret; if($('pc_zones')) $('pc_zones').value=planCfg.zones||''; if($('pc_fuel')) $('pc_fuel').value=planCfg.fuelOn===0?'끔':`${planCfg.fuelNm||'SK행복충전 고강충전소'}, ${planCfg.fuelAt||'부천 고강본동'}, ${planCfg.fuelMin||15}분`; };
  fill();
- const pdays=$('plan_days'); if(pdays&&!pdays._bound){ pdays._bound=1; pdays.addEventListener('click',e=>{ const b=e.target.closest('[data-pday]'); if(!b) return; planCfg.day=+b.dataset.pday; save(); renderPlan_(); }); }
+ const pdays=$('plan_days'); if(pdays&&!pdays._bound){ pdays._bound=1; pdays.addEventListener('click',e=>{ const b=e.target.closest('[data-pday]'); if(!b) return; planCfg.day=+b.dataset.pday; save(); pdays.querySelectorAll('[data-pday]').forEach(x=>x.classList.toggle('on',x===b)); bkPlanSoon_(); }); }
  if($('pc_save')) $('pc_save').onclick=async()=>{
 if($('pc_home')){ const hv=($('pc_home').value||'').trim();
    if(hv&&!bkGeo_(hv)){ $('pc_msg').textContent='집 위치를 못 찾았습니다 — 예: 남양주 다산동'; $('pc_msg').style.color='var(--vac)'; return; }
@@ -5091,6 +5093,10 @@ function bkAddrLine_(c){
 }
 
 // 날짜 탭 8개: 10.15(목) · 후보 n · 확정 x만 (선택한 날이 보이게 가로 스크롤)
+// 누른 버튼은 바로 바뀌고(화면 반응), 무거운 플랜 계산은 화면을 한 번 그린 뒤 (10.19 속도)
+function bkPlanSoon_(){ const sec=document.getElementById('plan_sec'); if(sec) sec.classList.add('pbusy'); clearTimeout(window._bkPST);
+ const go=()=>{ window._bkPST=setTimeout(()=>{ try{ renderPlan_(); }catch(e){} if(sec) sec.classList.remove('pbusy'); },0); };
+ if(typeof requestAnimationFrame==='function') requestAnimationFrame(go); else go(); }
 function bkDayTabs_(off){
  const el=document.getElementById('plan_days'); if(!el) return;
  const today=bkDayStr_(0);
@@ -5098,7 +5104,7 @@ function bkDayTabs_(off){
   const cand=books.filter(x=>x.d===d&&x.cand&&!x.gone).length, acc=books.filter(x=>x.d===d&&!x.cand), rev=acc.reduce((t,x)=>t+(+x.fare||0),0);
   const sub=[cand?`후보 ${cand}`:'',acc.length?`확정 ${Math.round(rev/1000)/10}만`:''].filter(Boolean).join(' · ')||(d===today?'오늘':'-');
   return `<button id="plan_day${i}" data-pday="${i}" class="${i===off?'on':''}${wd===6?' sat':wd===0?' sun':''}">${bkDateLab_(d)}<small>${sub}</small></button>`; }).join('');
- const on=el.querySelector('.on'); if(on&&on.scrollIntoView&&el.scrollWidth>el.clientWidth){ try{ el.scrollLeft=Math.max(0,on.offsetLeft-el.clientWidth/2+on.clientWidth/2); }catch(e){} }
+ const on=el.querySelector('.on'); if(on&&on.scrollIntoView){ const sc=()=>{ try{ if(el.scrollWidth>el.clientWidth) el.scrollLeft=Math.max(0,on.offsetLeft-el.clientWidth/2+on.clientWidth/2); }catch(e){} }; if(typeof requestAnimationFrame==='function') requestAnimationFrame(sc); else sc(); }   // 위치 계산은 그린 뒤에 (화면 전체 다시 계산 방지)
 }
 
 // ── ⏱ 근무시간 선택지 (JK 10.15): 기본(퇴근 목표) · +2h · +4h · +6h · 제한 없음 — 연장하면 어떤 콜이 더 붙고 얼마가 느는지 ──
@@ -5280,7 +5286,7 @@ async function bkShrink_(file){
 }
 // 분석 대기열
 const bkQ={items:[],running:0,shot:0,done:0,found:0,added:0,dup:0,fail:0,waiting:0,lastErr:'',ids:[],bytesIn:0,bytesOut:0,onUpdate:null};
-function bkQReset_(lazy){ Object.assign(bkQ,{items:[],shot:0,done:0,found:0,added:0,dup:0,fail:0,lastErr:'',ids:[],mine:[],bytesIn:0,bytesOut:0}); if(!lazy){ try{ bkBatchStart_(); }catch(e){} } }
+function bkQReset_(lazy){ Object.assign(bkQ,{items:[],shot:0,done:0,found:0,added:0,dup:0,fail:0,lastErr:'',ids:[],mine:[],bytesIn:0,bytesOut:0,dayOut:0}); if(!lazy){ try{ bkBatchStart_(); }catch(e){} } }
 function bkQNotify_(){ try{ bkQ.onUpdate&&bkQ.onUpdate(); }catch(e){} }
 function bkEnqueue_(blob){ bkQ.items.push(blob); bkQ.shot++; bkQNotify_(); bkPump_(); }
 let _bkBE=null;
@@ -5302,8 +5308,9 @@ async function bkRunOne_(blob,tries){
   if(res.added) bkUpLog_(res.added); bkRenderSoon_();
  }catch(e){
   const m=String(e&&e.message||e);
+  if(typeof BK_GEM_DAYMSG!=='undefined'&&m===BK_GEM_DAYMSG){ bkQ.fail++; bkQ.lastErr=m; bkQ.dayOut=1; return; }   // 일일 한도 소진: 재시도해도 안 됨 → 바로 알림(처리중 몇 분씩 멈추지 않게)
   if(/한도|429/.test(m)&&tries<5){ bkQ.waiting++; bkQNotify_(); await bkSleep_(Math.min(60000,BK_RETRY_MS*(tries+1))); bkQ.waiting--; return bkRunOne_(blob,tries+1); }
-  if(/과부하|503|Failed to fetch|NetworkError/.test(m)&&tries<3){ await bkSleep_(Math.round(BK_RETRY_MS/4)*(tries+1)); return bkRunOne_(blob,tries+1); }
+  if(/과부하|503|Failed to fetch|NetworkError|응답 지연/.test(m)&&tries<3){ await bkSleep_(Math.round(BK_RETRY_MS/4)*(tries+1)); return bkRunOne_(blob,tries+1); }
   bkQ.fail++; bkQ.lastErr=m;
  }
 }
@@ -5319,24 +5326,48 @@ let _bkStream=null;
 const bkCamOn_=()=>{ const o=document.getElementById('cam_ov'); return !!(o&&!o.hidden); };
 function bkCamSupported_(){ return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia); }
 async function bkCamOpen_(mine){
+ if(bkCamOn_()) return;   // 이미 열림(화면이 느려 버튼을 여러 번 누른 경우) — 다시 열면 카메라 연결이 끊겨 셔터가 안 먹음
  bkCamMine=!!mine;   // ⚡ 배차화면 모드는 운전 화면 버튼에서만
  const $=id=>document.getElementById(id), ov=$('cam_ov');
  if(ov&&ov.parentNode!==document.body) document.body.appendChild(ov);   // 예약 탭 밖(운전 화면 📷 배차화면)에서 열어도 보이게 — 숨은 탭 안에 있으면 화면에 안 나옴
  bkQReset_(); bkQ.onUpdate=bkCamPaintSoon_; _bkShotWait=0;
  ov.hidden=false; document.body.classList.add('camlock');
- $('cam_note').textContent=bkCamMine?'⚡ 수락한 임박콜의 배차 완료 화면을 찍으세요 — 찍으면 바로 내 수락 예약으로 저장, 탑승 때 자동 연결':geminiKey?'예약콜 화면이 꽉 차게 맞추고 셔터를 연속으로 누르세요':'AI 키가 없어 한 장씩 글자인식(느림)으로 처리합니다 — ⚙ AI 사진인식 설정에서 키를 넣으면 연속 촬영';
+ $('cam_note').textContent=bkCamMine?'⚡ 수락한 임박콜의 배차 완료 화면을 찍으세요 — 찍으면 바로 내 수락 예약으로 저장, 탑승 때 자동 연결':geminiKey?'예약콜 화면이 꽉 차게 맞추고 셔터를 한 번 누르면 한 장 찍힙니다 — 화면을 넘기며 한 번씩':'AI 키가 없어 한 장씩 글자인식(느림)으로 처리합니다 — ⚙ AI 사진인식 설정에서 키를 넣으면 연속 촬영';
  bkCamPaint_();
- try{
-  _bkStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
-  const v=$('cam_v'); v.srcObject=_bkStream; await v.play().catch(()=>{});
- }catch(e){   // 권한 거부·카메라 없음 → 폰 기본 카메라로
+ const gen=++_bkCamGen; bkCamStop_(); _bkCamDead=0;   // 앞 카메라 연결을 먼저 끊음 (예전: 두 번 누르면 앞 연결이 남아 카메라를 붙잡음 → 검은 화면·셔터 무반응)
+ try{ await bkCamStart_(gen); }
+ catch(e){   // 권한 거부·카메라 없음 → 폰 기본 카메라로
+  if(gen!==_bkCamGen) return;
   bkCamClose_(true);
   const cap=$('bk_cap'); if(cap) cap.click();
  }
 }
+// 카메라 연결: 요청 중에 닫거나 다시 열었으면 받은 연결은 바로 끊음. 카메라를 다른 곳이 붙잡고 있으면(NotReadable) 잠깐 뒤 한 번 더, 해상도 조건 없이
+let _bkCamGen=0, _bkCamDead=0;
+function bkCamStop_(){ try{ _bkStream&&_bkStream.getTracks().forEach(t=>t.stop()); }catch(e){} _bkStream=null; const v=document.getElementById('cam_v'); if(v){ try{ v.srcObject=null; }catch(e){} } }
+async function bkCamStart_(gen){
+ const $=id=>document.getElementById(id), C1={audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}};
+ const slow=setTimeout(()=>{ if(gen===_bkCamGen&&bkCamOn_()&&!($('cam_v')||{}).videoWidth){ const n=$('cam_note'); if(n) n.textContent='카메라가 늦게 열립니다… 계속 안 되면 셔터를 한 번 더 누르면 폰 기본 카메라로 찍습니다'; _bkCamDead=1; } },6000);
+ let st;
+ try{ st=await navigator.mediaDevices.getUserMedia(C1); }
+ catch(e){ if(e&&e.name==='NotAllowedError'||e&&e.name==='SecurityError'){ clearTimeout(slow); throw e; }
+  await bkSleep_(400); if(gen!==_bkCamGen){ clearTimeout(slow); return; }
+  try{ st=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'}}}); }catch(e2){ clearTimeout(slow); throw e2; } }
+ if(gen!==_bkCamGen||!bkCamOn_()){ clearTimeout(slow); try{ st.getTracks().forEach(t=>t.stop()); }catch(e){} return; }   // 기다리는 사이 닫힘/다시 열림
+ _bkStream=st; const v=$('cam_v'); v.srcObject=st; await Promise.race([v.play().catch(()=>{}),bkSleep_(1500)]);   // 영상이 안 오는 연결이면 play()가 끝나지 않음 — 기다리다 멈추지 않게
+ st.getVideoTracks().forEach(t=>t.addEventListener('ended',()=>{ if(gen===_bkCamGen&&bkCamOn_()) bkCamRestart_(); }));   // 카메라가 끊기면(다른 앱·화면 꺼짐) 자동 재연결
+ clearTimeout(slow); if(v.videoWidth) _bkCamDead=0;
+}
+let _bkCamRe=0;
+async function bkCamRestart_(){
+ if(_bkCamRe) return false; _bkCamRe=1; const n=document.getElementById('cam_note'); if(n) n.textContent='카메라 다시 연결 중…';
+ const gen=++_bkCamGen; bkCamStop_(); let ok=false;
+ try{ await bkCamStart_(gen); const v=document.getElementById('cam_v'); for(let i=0;i<20&&v&&!v.videoWidth;i++) await bkSleep_(100); ok=!!(v&&v.videoWidth); }catch(e){}
+ _bkCamRe=0; if(n) n.textContent=ok?'카메라 다시 연결됨 — 셔터를 누르세요':'카메라가 응답하지 않습니다 — 셔터를 한 번 더 누르면 폰 기본 카메라로 찍습니다'; if(!ok) _bkCamDead=1; return ok;
+}
 function bkCamClose_(silent){
  const $=id=>document.getElementById(id);
- try{ _bkStream&&_bkStream.getTracks().forEach(t=>t.stop()); }catch(e){} _bkStream=null;
+ _bkCamGen++; bkCamStop_(); _bkShotWait=0;
  const ov=$('cam_ov'); if(ov) ov.hidden=true; document.body.classList.remove('camlock');
  bkQ.onUpdate=bkOcrBoxPaint_;
  if(!bkQ.items.length&&!bkQ.running){ try{ bkBatchEnd_(); }catch(e){} if(!silent) bkCamMine=false; }
@@ -5345,12 +5376,19 @@ function bkCamClose_(silent){
  if(!silent){ setTimeout(()=>{ try{ const f=document.getElementById('fill_sec'); if(f&&!f.hidden&&f.scrollIntoView) f.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){} },500); }   // 닫으면 빈 시간 채우기로
 }
 let _bkShotWait=0;
+let _bkLastShot=0;
 async function bkCamShot_(){
+ _bkLastShot=Date.now();
  const $=id=>document.getElementById(id), v=$('cam_v');
  if(!v) return;
- if(!v.videoWidth){   // 카메라가 아직 준비 전이면 버리지 않고 준비되는 대로 찍음 (예전: 그냥 무시 → 2~3번 눌러야 찍힘)
+ const sh=$('cam_shot'); if(sh){ sh.classList.add('hit'); setTimeout(()=>sh.classList.remove('hit'),180); }   // 누른 표시 (애니메이션 꺼진 폰에서도 보이게)
+ const tr=_bkStream&&_bkStream.getVideoTracks()[0];
+ if(v.paused&&v.srcObject) v.play().catch(()=>{});
+ if(!v.videoWidth||(tr&&tr.readyState==='ended')){   // 카메라가 아직 준비 전이면 버리지 않고 준비되는 대로 찍음 — 3초 안에 안 되면 카메라를 다시 연결
   if(_bkShotWait) return; _bkShotWait=1; const n=$('cam_note'); if(n) n.textContent='카메라 준비 중… 준비되면 바로 찍습니다';
-  for(let i=0;i<40&&!v.videoWidth;i++) await bkSleep_(100); _bkShotWait=0; if(!v.videoWidth) return; }
+  for(let i=0;i<30&&!v.videoWidth;i++) await bkSleep_(100);
+  if(!v.videoWidth||(tr&&tr.readyState==='ended')) await bkCamRestart_();
+  _bkShotWait=0; if(!v.videoWidth||!bkCamOn_()) return; }
  const s=Math.min(1,BK_SHRINK/Math.max(v.videoWidth,v.videoHeight));
  const c=document.createElement('canvas'); c.width=Math.round(v.videoWidth*s); c.height=Math.round(v.videoHeight*s);
  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
@@ -5373,12 +5411,15 @@ function bkCamChain_(day){
  const v=PK&&PK.pick?{C,r:PK.pick,cfg:PK.cfg}:null; bkCamPK={k,v}; return v;
 }
 let _bkCPT=null, _bkCPAt=0;
-function bkCamPaintSoon_(){ const now=Date.now(); clearTimeout(_bkCPT);
+function bkCamPaintSoon_(){ clearTimeout(_bkCPT);
  const quick=()=>{ const $=id=>document.getElementById(id); if(!$('cam_stat')) return; const busy=bkQ.items.length+bkQ.running;
-  $('cam_stat').textContent=`촬영 ${bkQ.shot} · 분석 ${bkQ.done}${busy?` (+${busy} 처리중)`:''} · 새 콜 ${bkQ.added}`+(bkQ.dup?` · 중복 ${bkQ.dup}`:'')+(bkQ.waiting?' · 한도 대기':'')+(bkQ.fail?` · 실패 ${bkQ.fail}`:''); };
- quick();   // 숫자는 바로, 추천 연결 계산은 몰아서 (셔터 누르는 동안 화면이 멈추지 않게)
- const wait=Math.max(0,900-(now-_bkCPAt)); if(!bkQ.items.length&&!bkQ.running){ _bkCPAt=now; try{ bkCamPaint_(); }catch(e){} return; }   // 분석이 다 끝났으면 바로
- _bkCPT=setTimeout(()=>{ _bkCPAt=Date.now(); try{ bkCamPaint_(); }catch(e){} },Math.max(wait,700)); }
+  $('cam_stat').textContent=`촬영 ${bkQ.shot} · 분석 ${bkQ.done}${busy?` (+${busy} 처리중)`:''} · 새 콜 ${bkQ.added}`+(bkQ.dup?` · 중복 ${bkQ.dup}`:'')+(bkQ.waiting?' · 한도 대기':'')+(bkQ.fail?` · 실패 ${bkQ.fail}`:'');
+  if(bkQ.dayOut&&$('cam_note')) $('cam_note').textContent='⛔ '+BK_GEM_DAYMSG;
+  if(busy){ const r=$('cam_res'); if(r&&!r.querySelector('.camrow')) r.innerHTML=`<div class="camhint">📸 ${bkQ.shot}장 찍힘 — 분석 중… 계속 찍어도 됩니다 (추천 연결은 분석이 끝나면 표시)</div>`; } };
+ quick();   // 숫자는 바로. 추천 연결 계산(무거움)은 분석이 모두 끝나고 셔터를 1.5초 안 누를 때 한 번만 — 계산 중에 셔터가 안 먹던 문제
+ if(bkQ.items.length||bkQ.running) return;
+ const run=()=>{ if(bkQ.items.length||bkQ.running) return; const idle=Date.now()-_bkLastShot; if(idle<1500){ _bkCPT=setTimeout(run,1500-idle); return; } _bkCPAt=Date.now(); try{ bkCamPaint_(); }catch(e){} };
+ _bkCPT=setTimeout(run,50); }
 function bkCamPaint_(){
  const $=id=>document.getElementById(id); if(!$('cam_stat')) return;
  const busy=bkQ.items.length+bkQ.running;
@@ -5400,7 +5441,6 @@ function bkCamPaint_(){
  const row=(c,col,lab,sub,btn)=>`<div class="camrow" style="border-left-color:var(--${col})"><div class="cr1"><b style="color:var(--${col})">${lab}</b> `+
   `<span>${dl(c.d)}${c.t} ${bkEsc_(c.from)} → ${bkEsc_(c.to)}</span><b class="cf">${c.fare?fmt(c.fare):'요금?'}</b></div><div class="cr2">${sub}</div>${btn}</div>`;
  let h=cmp;
- if(got.some(c=>c.d===bkDayStr_(0))||day===bkDayStr_(0)){ try{ h+=bkNowFitsHtml_({cam:1}); }catch(e){} }   // 찍은 순간 GPS 기준 바로 갈 수 있는 콜
  if(got.some(c=>c.d===bkDayStr_(0))||day===bkDayStr_(0)){ try{ h+=bkNowFitsHtml_({cam:1}); }catch(e){} }   // 찍은 순간 GPS 기준 바로 갈 수 있는 콜
  // 빈 시간에서 연 카메라: 그 빈 시간에 들어가는 콜을 맨 위에 (연결 기여순)
  if(gx&&gx.d===day&&P){
@@ -5458,7 +5498,9 @@ function initCam_(){
  btn.onclick=()=>{ bkGapCtx=null; if(bkCamSupported_()&&$('cam_ov')) bkCamOpen_(); else if(legacy) legacy(); };
  if($('cam_close')) $('cam_close').onclick=()=>bkCamClose_();
  if($('cam_shot')){ const sh=$('cam_shot'); let last=0;
-   const fire=e=>{ const t=Date.now(); if(t-last<80) return; last=t; if(e&&e.cancelable) e.preventDefault(); bkCamShot_(); };
+   const fire=e=>{ const t=Date.now(); if(t-last<80) return; last=t; if(e&&e.cancelable) e.preventDefault();
+     if(_bkCamDead&&!(($('cam_v')||{}).videoWidth)){ const mine=bkCamMine; bkCamClose_(true); bkCamMine=mine; const cap=$('bk_cap'); if(cap) cap.click(); return; }   // 앱 안 카메라가 끝내 안 열리면: 이 누름으로 바로 폰 기본 카메라
+     bkCamShot_(); };
    sh.addEventListener('pointerdown',fire); sh.onclick=e=>{ if(Date.now()-last>400) fire(e); }; }   // 손가락이 닿는 순간 찍음(뗄 때까지 기다리지 않음)
  if($('cam_gal')) $('cam_gal').onclick=()=>{ bkCamClose_(true); manual(); $('bk_file').click(); };
  if($('cam_man')) $('cam_man').onclick=()=>{ bkCamClose_(true); manual(); };
@@ -5978,20 +6020,32 @@ const BK_OCR_PROMPT=`이 카카오T 벤티 예약콜 화면 캡처(목록 또는
 - fromAddr/toAddr: 화면에 보이는 출발·도착 주소 글자를 하나도 빼지 말고 전부 (건물명·상호·장소명, 도로명주소·번지, 지번, 아파트 동·호, 층, 출입구·정문·주차장 같은 설명까지). 장소명과 주소가 두 줄로 보이면 '장소명 주소' 순서로 이어서 한 줄로. 숫자(번지·건물번호·동 번호)는 화면 그대로 정확히. 예: "강남파이낸스센터 서울 강남구 테헤란로 152", "연세대학교 정문", "롯데월드타워 잠실 지하 주차장 입구". 잘린 글자(…)는 보이는 데까지. 괄호 안 시도·동은 빼도 됨. 동이름 말고 다른 주소가 하나도 없으면 null.
 - 날짜는 '10.14(수)'처럼 보이면 올해(${new Date().getFullYear()}) 기준 YYYY-MM-DD로. 요일만 있으면 가장 가까운 미래 날짜.
 - 요금은 숫자만(예 42900). 콜이 1건이면 원소 1개짜리 배열. 공백·줄바꿈 없이 한 줄 JSON.`;
+// 일일 한도 소진 기록(모델별, 한국시각 날짜) — 그날은 그 모델로 다시 보내지 않음
+let BK_GEM_TIMEOUT=45000; const BK_GEM_DAYMSG='오늘 AI 사진인식 무료 한도를 다 썼습니다 — 한도는 매일 오후 4~5시(미국 자정)에 다시 채워집니다. 그 전엔 ✍ 직접기입이나 사진첩의 글자인식으로';
+let bkGemDay={}; try{ bkGemDay=JSON.parse(localStorage.getItem('gongcha:gemday')||'{}')||{}; }catch(e){}
+function bkGemDayKey_(){ return new Date(Date.now()-8*3600000).toISOString().slice(0,10); }   // 미국 태평양 날짜(대략) — 한도 초기화 기준
+function bkGemDay_(m){ return bkGemDay[m]===bkGemDayKey_(); }
+function bkGemDaySet_(m){ bkGemDay[m]=bkGemDayKey_(); try{ localStorage.setItem('gongcha:gemday',JSON.stringify(bkGemDay)); }catch(e){} }
 async function geminiOcr(file){
  const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
  const url="https://generativelanguage.googleapis.com/v1beta/interactions";
  const hdr={"Content-Type":"application/json","x-goog-api-key":geminiKey};
- let okR, lastErr="";
+ let okR, lastErr="", day429=false, min429=false;
  for(const model of GEMINI_MODELS){
   const body={model,input:[{type:"text",text:BK_OCR_PROMPT},{type:"image",data:b64,mime_type:file.type||"image/jpeg"}]};
-  const r=await fetch(url,{method:"POST",headers:hdr,body:JSON.stringify(body)});
+  if(bkGemDay_(model)) { lastErr='일일 한도 ['+model+']'; day429=true; continue; }
+  const ac=typeof AbortController==='function'?new AbortController():null, to=ac?setTimeout(()=>ac.abort(),BK_GEM_TIMEOUT):null;
+  let r; try{ r=await fetch(url,{method:"POST",headers:hdr,body:JSON.stringify(body),signal:ac?ac.signal:undefined}); }
+  catch(e){ clearTimeout(to); if(e&&e.name==='AbortError') throw new Error('응답 지연 ('+Math.round(BK_GEM_TIMEOUT/1000)+'초) — 재시도'); throw e; }
+  clearTimeout(to);
   if(r.ok){okR=r;break;}
-  const st=r.status; lastErr="HTTP "+st+" ["+model+"] "+(await r.text()).slice(0,120);
+  const st=r.status, tx=(await r.text()); lastErr="HTTP "+st+" ["+model+"] "+tx.slice(0,120);
   if(st===503) continue;                       // 과부하 → 다른 모델
-  if(st===429) throw new Error("요청 한도 초과 — 1~2분 후 다시 (무료: 분당5·일일20회)");
+  if(st===429){ if(/PerDay|per day|daily/i.test(tx)){ bkGemDaySet_(model); day429=true; } else min429=true; continue; }   // 한도 → 다른 모델(한도가 따로)
   throw new Error(lastErr);
  }
+ if(!okR&&day429&&!min429) throw new Error(BK_GEM_DAYMSG);
+ if(!okR&&(min429||day429)) throw new Error("요청 한도 초과 — 잠시 뒤 자동 재시도 (무료: 분당·일일 한도)");
  if(!okR) throw new Error("모든 모델 과부하 — 잠시 후 다시. "+lastErr);
  const raw=await okR.text(); let j=null; try{j=JSON.parse(raw);}catch(e){}
  let txt=(j&&(j.output_text||j.text))||"";
@@ -7503,7 +7557,7 @@ document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{
   if(el) el.className='pane'+(t===b.dataset.tab?' on':'');});
  const safe=(fn,nm)=>{try{ if(typeof fn==='function') fn(); }catch(e){ console.warn(nm,e.message); }};
  if(b.dataset.tab==='anal') safe(typeof renderAnal!=='undefined'&&renderAnal,'renderAnal');
- if(b.dataset.tab==='book') safe(typeof renderBook!=='undefined'&&renderBook,'renderBook');
+ if(b.dataset.tab==='book'){ clearTimeout(window._bkTabT); window._bkTabT=setTimeout(()=>safe(typeof renderBook!=='undefined'&&renderBook,'renderBook'),30); }
  if(b.dataset.tab==='tax'){ safe(typeof renderExpList!=='undefined'&&renderExpList,'renderExpList');
                             safe(typeof renderTax!=='undefined'&&renderTax,'renderTax'); }
  if(b.dataset.tab==='air') safe(typeof renderAir!=='undefined'&&renderAir,'renderAir');
