@@ -5295,7 +5295,7 @@ function bkPump_(){
   const b=bkQ.items.shift(); bkQ.running++;
   bkRunOne_(b,0).finally(()=>{ bkQ.running--; bkQNotify_(); bkPump_();
    // 대기열이 비면(1.5초 더 기다려 연속 촬영이 끝났는지 확인) 이번 묶음 비교 → 플랜 다시 계산
-   if(!bkQ.items.length&&!bkQ.running){ clearTimeout(_bkBE); _bkBE=setTimeout(()=>{ if(!bkQ.items.length&&!bkQ.running){ try{ bkBatchEnd_(); }catch(e){} bkCamPK.k=''; bkRenderSoon_(0); bkQNotify_(); } },1500); } });
+   if(!bkQ.items.length&&!bkQ.running){ clearTimeout(_bkBE); _bkBE=setTimeout(()=>{ if(bkCamOn_()) return; if(!bkQ.items.length&&!bkQ.running){ try{ bkBatchEnd_(); }catch(e){} bkCamPK.k=''; bkRenderSoon_(0); bkQNotify_(); } },1500); } });   // 카메라가 열려 있으면 닫을 때 한 번 (10.19: 묶음 비교가 셔터를 막음)
  }
 }
 async function bkRunOne_(blob,tries){
@@ -5330,7 +5330,7 @@ async function bkCamOpen_(mine){
  bkCamMine=!!mine;   // ⚡ 배차화면 모드는 운전 화면 버튼에서만
  const $=id=>document.getElementById(id), ov=$('cam_ov');
  if(ov&&ov.parentNode!==document.body) document.body.appendChild(ov);   // 예약 탭 밖(운전 화면 📷 배차화면)에서 열어도 보이게 — 숨은 탭 안에 있으면 화면에 안 나옴
- bkQReset_(); bkQ.onUpdate=bkCamPaintSoon_; _bkShotWait=0;
+ bkQReset_(); bkQ.onUpdate=bkCamPaintSoon_; _bkShotWait=0; _bkCamFull=false;
  ov.hidden=false; document.body.classList.add('camlock');
  $('cam_note').textContent=bkCamMine?'⚡ 수락한 임박콜의 배차 완료 화면을 찍으세요 — 찍으면 바로 내 수락 예약으로 저장, 탑승 때 자동 연결':geminiKey?'예약콜 화면이 꽉 차게 맞추고 셔터를 한 번 누르면 한 장 찍힙니다 — 화면을 넘기며 한 번씩':'AI 키가 없어 한 장씩 글자인식(느림)으로 처리합니다 — ⚙ AI 사진인식 설정에서 키를 넣으면 연속 촬영';
  bkCamPaint_();
@@ -5418,10 +5418,12 @@ function bkCamPaintSoon_(){ clearTimeout(_bkCPT);
   if(busy){ const r=$('cam_res'); if(r&&!r.querySelector('.camrow')) r.innerHTML=`<div class="camhint">📸 ${bkQ.shot}장 찍힘 — 분석 중… 계속 찍어도 됩니다 (추천 연결은 분석이 끝나면 표시)</div>`; } };
  quick();   // 숫자는 바로. 추천 연결 계산(무거움)은 분석이 모두 끝나고 셔터를 1.5초 안 누를 때 한 번만 — 계산 중에 셔터가 안 먹던 문제
  if(bkQ.items.length||bkQ.running) return;
- const run=()=>{ if(bkQ.items.length||bkQ.running) return; const idle=Date.now()-_bkLastShot; if(idle<1500){ _bkCPT=setTimeout(run,1500-idle); return; } _bkCPAt=Date.now(); try{ bkCamPaint_(); }catch(e){} };
+ const run=()=>{ if(bkQ.items.length||bkQ.running) return; _bkCPAt=Date.now(); try{ bkCamPaint_(_bkCamFull&&Date.now()-_bkLastShot>8000); }catch(e){} };   // 자동은 가벼운 목록만 — 추천 연결(2~4초 계산)은 버튼을 누를 때·닫을 때
  _bkCPT=setTimeout(run,50); }
-function bkCamPaint_(){
+let _bkCamFull=false;
+function bkCamPaint_(full){
  const $=id=>document.getElementById(id); if(!$('cam_stat')) return;
+ if(full===undefined) full=_bkCamFull; _bkCamFull=!!full;
  const busy=bkQ.items.length+bkQ.running;
  $('cam_stat').textContent=`촬영 ${bkQ.shot} · 분석 ${bkQ.done}${busy?` (+${busy} 처리중)`:''} · 새 콜 ${bkQ.added}`+(bkQ.dup?` · 중복 ${bkQ.dup}`:'')+(bkQ.waiting?' · 한도 대기':'')+(bkQ.fail?` · 실패 ${bkQ.fail}`:'');
  // 이번에 새로 들어온 콜 + 이미 있던 콜을 다시 찍은 것 (예전: 새 콜만 → 다 이미 있던 콜이면 '인식된 콜 없음'으로 잘못 표시)
@@ -5436,16 +5438,19 @@ function bkCamPaint_(){
  const cnt={}; got.forEach(c=>cnt[c.d]=(cnt[c.d]||0)+1);
  const gx=bkGapCtx&&Date.now()-bkGapCtx.at<30*60000?bkGapCtx:null;
  const day=gx&&cnt[gx.d]?gx.d:Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||a.localeCompare(b))[0];
- const P=bkCamChain_(day), chain=P?P.r.calls:[], fl=planCfg.floor||40000;
+ const P=full?bkCamChain_(day):null, chain=P?P.r.calls:[], fl=planCfg.floor||40000;
  const dl=d=>d!==bkDayStr_(0)?d.slice(5).replace('-','.')+' ':'';
  const row=(c,col,lab,sub,btn)=>`<div class="camrow" style="border-left-color:var(--${col})"><div class="cr1"><b style="color:var(--${col})">${lab}</b> `+
   `<span>${dl(c.d)}${c.t} ${bkEsc_(c.from)} → ${bkEsc_(c.to)}</span><b class="cf">${c.fare?fmt(c.fare):'요금?'}</b></div><div class="cr2">${sub}</div>${btn}</div>`;
  let h=cmp;
  if(got.some(c=>c.d===bkDayStr_(0))||day===bkDayStr_(0)){ try{ h+=bkNowFitsHtml_({cam:1}); }catch(e){} }   // 찍은 순간 GPS 기준 바로 갈 수 있는 콜
  // 빈 시간에서 연 카메라: 그 빈 시간에 들어가는 콜을 맨 위에 (연결 기여순)
- if(gx&&gx.d===day&&P){
-  const i=gx.b?P.r.calls.findIndex(c=>c._s>=gx.b):-1, pos=i<0?P.r.calls.length:i;
-  let F=null; try{ F=bkGapFits_(P.r.calls,pos,P.C.nodes.filter(b=>b.cand&&b._geo),P.cfg); }catch(e){}
+ // 빈 시간 문맥: 추천 연결이 없으면(촬영 중) 확정 예약만으로 가볍게 — 하루 전체 계산 없이
+ const GP=P||(gx&&gx.d===day?(()=>{ try{ const t0=new Date(bkDayStr_(0)+'T00:00'), off=Math.round((new Date(day+'T00:00')-t0)/86400000); const C=bkPlanCtx_(off);
+   return {C,cfg:bkPlanBase_(C),r:{calls:C.nodes.filter(b=>!b.cand&&b._geo).sort((a,b)=>a._s-b._s)}}; }catch(e){ return null; } })():null);
+ if(gx&&gx.d===day&&GP){
+  const i=gx.b?GP.r.calls.findIndex(c=>c._s>=gx.b):-1, pos=i<0?GP.r.calls.length:i;
+  let F=null; try{ F=bkGapFits_(GP.r.calls,pos,GP.C.nodes.filter(b=>b.cand&&b._geo),GP.cfg); }catch(e){}
   const GL={g:['4만↑','occ'],y:['즉시콜보다 나음','amber'],r:['즉시콜보다 못함','vac'],na:['요금 미상','dim']};
   h+=`<div class="camsum">🧩 빈 시간 ${gx.a?bkHM_(gx.a):''}~${gx.b?bkHM_(gx.b):''}에 넣을 수 있는 콜 <b>${F?F.fits.length:0}건</b></div>`;
   if(F&&F.fits.length) F.fits.slice(0,4).forEach(f=>{ const [lb,cl]=GL[f.grade]||GL.na;
@@ -5462,6 +5467,11 @@ function bkCamPaint_(){
    h+=c.cand?row(c,'occ',`추천 ${i+1}`,sub,`<button data-camacc="${c.id}">수락함</button>`):row(c,'dim',`${i+1} 수락`,sub,'<span class="cok">수락됨</span>'); });
   if(chain.length>8) h+=`<div class="camhint">… 연결 ${chain.length-8}콜 더 — 닫으면 「하루 플랜」에서 전체 확인</div>`;
  }
+ if(!full){   // 촬영 중: 무거운 계산 없이 찍힌 콜만 (셔터가 항상 바로 먹게)
+  h+=`<div class="camsum">📋 찍힌 콜 <b>${got.length}</b>건 <button data-camchain="1">🔗 추천 연결 계산</button></div><div class="camhint">다 찍은 뒤 누르거나 닫으면 하루 연결을 계산합니다 (계산하는 2~4초 동안은 셔터가 멈춤)</div>`;
+  got.slice().sort((a,b)=>a._s-b._s).slice(0,8).forEach(c=>{ h+=row(c,c.cand?'amber':'dim',c.cand?'후보':'수락',`${c._ride?'운행 ~'+c._ride+'분':''}`,c.cand?`<button data-camacc="${c.id}">수락함</button>`:'<span class="cok">수락됨</span>'); });
+  if(got.length>8) h+=`<div class="camhint">… ${got.length-8}건 더</div>`;
+  $('cam_res').innerHTML=h; return; }
  // 이번에 찍었지만 연결에 안 들어간 콜: 왜 빠졌는지 (겹침 / 하한 미달) — 오늘 콜은 지금 위치 기준 임박 판정도
  const inC=new Set(chain.map(c=>c.id)), now=Date.now();
  const out=got.filter(c=>!inC.has(c.id)).map(c=>{
@@ -5504,7 +5514,8 @@ function initCam_(){
    sh.addEventListener('pointerdown',fire); sh.onclick=e=>{ if(Date.now()-last>400) fire(e); }; }   // 손가락이 닿는 순간 찍음(뗄 때까지 기다리지 않음)
  if($('cam_gal')) $('cam_gal').onclick=()=>{ bkCamClose_(true); manual(); $('bk_file').click(); };
  if($('cam_man')) $('cam_man').onclick=()=>{ bkCamClose_(true); manual(); };
- if($('cam_res')) $('cam_res').addEventListener('click',async e=>{ const all=e.target.closest('[data-camaccall]');
+ if($('cam_res')) $('cam_res').addEventListener('click',async e=>{ if(e.target.closest('[data-camchain]')){ const r=$('cam_res'); r.insertAdjacentHTML('afterbegin','<div class="camhint">🔗 추천 연결 계산 중… (2~4초)</div>'); setTimeout(()=>{ try{ bkCamPaint_(true); }catch(er){} },30); return; }
+   const all=e.target.closest('[data-camaccall]');
    if(all){ bkCamPK.k=''; const day=(bkQ.ids.map(id=>books.find(b=>b.id===id)).find(Boolean)||{}).d; const cnt={}; bkQ.ids.forEach(id=>{const b=books.find(x=>x.id===id); if(b) cnt[b.d]=(cnt[b.d]||0)+1;});
      const dd=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||a.localeCompare(b))[0]||day; const P=dd?bkCamChain_(dd):null;
      if(P){ P.r.calls.forEach(c=>{ const b=books.find(x=>x.id===c.id); if(b) delete b.cand; }); await Store.set(KEY_BOOK,books); bkCamPK.k=''; bkCamPaint_(); bkRenderSoon_(); } return; }
