@@ -1137,6 +1137,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 .prush{color:var(--amber)}.prush.warn{color:var(--vac);font-weight:600}
 .pbusy #plan_tl{opacity:.45;transition:opacity .1s}
 .fpr{margin-top:4px;font-size:12px;color:#9AB8FF}.fpr.dim{color:var(--dim)}.pnx{color:#9AB8FF;font-size:11px}
+.pgeo{color:var(--amber);font-size:12px}.pgeo.bad{color:var(--vac);font-weight:600}
 </style></head><body>
 
 <header><div class="mark">공차</div><div class="st" id="stt">빈차</div><button class="hdrbtn" id="addspot">+ 내 지점</button><button class="hdrbtn" id="wlk" title="화면 켜짐 유지">화면</button><button class="hdrbtn" id="opset">설정</button><div class="clk mono" id="clk">--:--</div></header>
@@ -2966,7 +2967,9 @@ function bkGeoRaw_(t,I){
  const toks=(t.match(/[가-힣0-9·]+(?:동|읍|면|가)(?![가-힣])/g)||[]).reverse();
  const seoulPick=key=>{ const m=I.by[key]; if(!m) return null; let best=null,bs=-1;
   for(const gu in m){ if(guHint&&gu!==guHint) continue; const e=m[gu], s=e.cells.reduce((a,c)=>a+(c.f||1),0)*(e.exact?1:0.9);
-   if(s>bs){bs=s;best=bkCentroid_(e.cells,key,gu);} } return best; };
+   if(s>bs){bs=s;best=bkCentroid_(e.cells,key,gu);} }
+  if(best&&!guHint){ const gs=Object.keys(m); if(gs.length>1){ const alts=gs.map(gu=>bkCentroid_(m[gu].cells,key,gu)).filter(Boolean).sort((a,b)=>(a.g===best.g?-1:b.g===best.g?1:0)); if(alts.length>1) best={...best,alts,ambSeoul:true}; } }   // 10.21: 관악 신사동 사고 — 같은 이름 동은 후보 전부
+  return best; };
  const giPick=key=>{ let c=I.mt[key]; if(!c) return null;
   if(seoul&&!gi) c=c.filter(p=>p.sd==='s'); else if(gi&&!seoul) c=c.filter(p=>p.sd!=='s');
   if(sggHit.length){   // 적힌 시군구 이름 중 가장 긴 것과 맞는 후보만 ('일산서구'가 '서구'(인천)보다 우선)
@@ -3142,6 +3145,42 @@ function bkTravelBase_(a,b,h){
 const bkHour_=ms=>new Date(ms).getHours();
 // 예약 1건을 계산 가능한 노드로 (좌표·운행시간·하차시각)
 // 동명이 여러 시에 있으면(경기 중앙동·정자동 …) 반대편 지점에서 가장 가까운 쪽으로 확정
+
+// ══ 📍 위치 검증 (JK 10.21: 관악구 신사동을 강남구 신사동으로 착각 → 취소·3일 정지) ══
+//  1) 서울 안 같은 이름 동(신사동: 강남·관악 / 삼성동: 강남·관악, 경기도 여러 곳): 주소에 구 이름이 있으면 그 구
+//  2) 없으면 요금으로 직선거리를 역산해 맞는 후보(사진 403건: 요금÷할증 = 9,063원 + 1km당 1,747원, 설명력 94%, 역산 오차 중앙 9%)
+//  3) 두 후보 차이가 2km 안이면 '불확실' → 추천에서 빼고 ⚠️ 표시, 수락 전 확인
+//  4) 모든 콜: 지도 직선거리가 요금 거리와 5km 이상·절반 이상 다르면 '주소 의심' (정상 콜 중 약 1%만 걸림)
+const BK_FARE={a:9063,b:1747};
+function bkFareKm_(b){ const fare=+(b&&b.fare)||0; if(!(fare>0)) return null; const pk=+b.peak>=1?+b.peak:1; return Math.max(0.3,(fare/pk-BK_FARE.a)/BK_FARE.b); }
+function bkPickFare_(f,t,b){
+ const FA=f&&f.alts&&f.alts.length>1?f.alts:null, TA=t&&t.alts&&t.alts.length>1?t.alts:null;
+ if(!FA&&!TA) return {f,t};
+ const gu=(ad,L)=>{ if(!ad) return null; const s=String(ad).replace(/\s+/g,''); return L.find(a=>a.g&&s.includes(a.g.replace(/\s+/g,'')))||null; };
+ const fx=FA?gu(b.fromAddr,FA):null, tx=TA?gu(b.toAddr,TA):null;
+ const one=g=>g&&g.alts?g.alts[0]:g;
+ const fl=FA?(fx?[fx]:FA):[one(f)], tl=TA?(tx?[tx]:TA):[one(t)], km=bkFareKm_(b);
+ const C=[]; fl.forEach(a=>tl.forEach(c=>{ if(a&&c&&a.la!=null&&c.la!=null) C.push({a,c,d:dist(a.la,a.lo,c.la,c.lo)}); }));
+ if(!C.length) return {f:FA?one(f):f,t:TA?one(t):t};
+ let how=C.length===1?'addr':'fare', margin=99;
+ if(C.length>1){ if(km!=null&&km<=22){ C.forEach(x=>x.e=Math.abs(x.d-km)); C.sort((p,q)=>p.e-q.e); margin=C[1].e-C[0].e; }
+   else { how='prior'; margin=0; const f0=one(f), t0=one(t); C.sort((p,q)=>((p.a===f0||!FA)&&(p.c===t0||!TA)?-1:0)-((q.a===f0||!FA)&&(q.c===t0||!TA)?-1:0)); } }   // 요금 없음·먼 거리(고속도로·공항 요금은 직선 관계가 아님): 가장 흔한 쪽, 불확실
+ const B=C[0], unsure=how!=='addr'&&margin<2;
+ const lab=x=>`${x.g||''} ${x.n||''}`.trim();
+ const side=[]; if(FA) side.push(`${bkEsc_(String(b.from||'').replace(/^(서울|경기|인천)\s*/,''))}=${lab(B.a)}`); if(TA) side.push(`${bkEsc_(String(b.to||'').replace(/^(서울|경기|인천)\s*/,''))}=${lab(B.c)}`);
+ const cands=C.slice(0,3).map(x=>`${FA?lab(x.a):''}${FA&&TA?'→':''}${TA?lab(x.c):''} ${x.d.toFixed(1)}km`);
+ return {f:FA?{...B.a,amb:true,ambN:FA.length}:f,t:TA?{...B.c,amb:true,ambN:TA.length}:t,
+  amb:{how,margin:Math.round(margin*10)/10,km:km!=null?Math.round(km*10)/10:null,unsure,side:side.join(', '),cands,fs:!!FA,ts:!!TA}};
+}
+function bkFareCheck_(f,t,b){ const km=bkFareKm_(b); if(km==null||!f||!t||f.la==null||t.la==null||km>22) return null;
+ const d=dist(f.la,f.lo,t.la,t.lo); if(d<0.3) return null;   // 같은 곳 왕복·경유는 요금으로 거리를 못 봄
+ return Math.abs(d-km)>Math.max(5,0.5*km)?{km:Math.round(km*10)/10,d:Math.round(d*10)/10}:null; }
+function bkAccOk_(b){ try{ const n=bkNode_(b); if(!n._geoBad) return true; const A=n._amb, S=n._geoSus;
+  return confirm(`⚠️ 수락 전에 주소를 확인하세요\n${A&&A.unsure?`같은 이름 동: ${A.side.replace(/<[^>]+>/g,'')}\n후보: ${A.cands.join(' / ')}\n`:''}${S?`요금 기준 약 ${S.km}km인데 지도 위치로는 ${S.d}km\n`:''}카카오 배차 화면의 상세 주소(구 이름)를 확인했으면 [확인]`); }catch(e){ return true; } }
+function bkGeoWarn_(c){ try{ const n=c&&c._s!=null?c:bkNode_(c); const A=n._amb, S=n._geoSus; let h='';
+  if(A&&(A.unsure||A.how!=='addr')) h+=`<div class="mt pgeo${A.unsure?' bad':''}">${A.unsure?'⚠️ 위치 확인 필요':'📍 같은 이름 동'}: ${A.side}${A.how==='fare'?` (요금 기준 ${A.km}km로 판단${A.unsure?' — 후보 차이가 작음':''})`:A.how==='prior'?` (${A.km!=null?'먼 거리라 요금으로 못 가름':'요금 없음'} — 흔한 쪽으로 추정)`:A.how==='poi'?' (상세주소 위치로 확정)':''}${A.unsure?` · 후보: ${A.cands.join(' / ')} — 주소를 확인하기 전엔 추천하지 않음`:''}</div>`;
+  if(S) h+=`<div class="mt pgeo bad">⚠️ 주소 의심: 요금 기준 약 ${S.km}km인데 지도 위치로는 ${S.d}km — 출발·도착 주소를 확인하세요${n.cand?' (확인 전엔 추천하지 않음)':''}</div>`;
+  return h; }catch(e){ return ''; } }
 function bkPickNear_(g,other){
  if(!g||!g.alts||!other) return g;
  const o=other.alts?other.alts[0]:other;
@@ -3151,13 +3190,19 @@ function bkPickNear_(g,other){
 const bkCoarse_=g=>!!(g&&g.src!=='A'&&g.n&&g.n===g.g&&/(구|시|군)$/.test(g.n));   // 동 없이 구·시만 아는 지점 (예: '서초구') — 실제 위치가 수 km 다를 수 있음
 function bkNode_(b){
  let f=bkGeo_(b.from), t=bkGeo_(b.to); const s=bkStart(b);
- f=bkPickNear_(f,t); t=bkPickNear_(t,f);
+ const f0=f, t0=t, PK=bkPickFare_(f,t,b); f=PK.f; t=PK.t;   // 같은 이름 동: 주소의 구 이름 → 요금으로 계산한 거리 → (요금 없으면) 가까운 쪽(불확실)
  if(b.fla!=null) f=bkPrecise_(f,b.fla,b.flo,b.fromAddr); if(b.tla!=null) t=bkPrecise_(t,b.tla,b.tlo,b.toAddr);   // 🎯 상세주소 좌표 우선
+ if(PK.amb&&(PK.amb.fs?b.fla!=null:true)&&(PK.amb.ts?b.tla!=null:true)&&(PK.amb.fs||PK.amb.ts)){   // 같은 이름 동인 쪽에 상세주소 좌표가 있으면 그 좌표로 확정(구 이름도 좌표에 가까운 후보로). 틀렸으면 아래 요금 검사가 잡음
+  const fix=(g,raw)=>{ const L=raw&&raw.alts; if(!g||!L) return g; const a=L.slice().sort((x,y)=>dist(g.la,g.lo,x.la,x.lo)-dist(g.la,g.lo,y.la,y.lo))[0]; return {...g,g:a.g}; };
+  if(PK.amb.fs) f=fix(f,f0); if(PK.amb.ts) t=fix(t,t0);
+  const lab=(x,raw)=>`${String(raw||'').replace(/^(서울|경기|인천)\s*/,'')}=${x.g} ${(x.n||'').split(' ')[0]}`;
+  PK.amb={...PK.amb,how:'poi',unsure:false,side:[PK.amb.fs?lab(f,b.from):'',PK.amb.ts?lab(t,b.to):''].filter(Boolean).join(', ')}; }   // 같은 이름 동인 쪽에 상세주소 좌표가 있으면 확정(틀렸으면 아래 요금 검사가 잡음)
  const tr=(f&&t)?bkTravelT_(f,t,s):null;
  // 출발=도착(같은 동·왕복·경유): 좌표상 0분 → 요금으로 운행시간 추정(내 기록 평균 약 1,100원/분, 최소 8분)
  let rm=tr?tr.m:null; const same=!!(tr&&tr.km<0.3&&b.fare>0); if(same) rm=Math.max(8,Math.round(b.fare/1100));
  const coarse=bkCoarse_(f)||bkCoarse_(t);
- return {...b,_s:s,_f:f,_t:t,_ride:rm,_rideKm:tr?tr.km:null,_end:tr?s+rm*60000:bkEnd(b),_geo:!!tr,_same:same,_rsrc:tr&&!same?tr.src:null,_rrisk:(tr&&!same?tr.risk||0:0)+(coarse&&rm?Math.max(8,Math.round(rm*0.35)):0),_rtm:tr?tr.tm:null,_coarse:coarse};
+ const sus=bkFareCheck_(f,t,b), amb=PK.amb||null, bad=!!(amb&&amb.unsure)||!!sus;
+ return {...b,_s:s,_f:f,_t:t,_ride:rm,_rideKm:tr?tr.km:null,_end:tr?s+rm*60000:bkEnd(b),_geo:!!tr&&!(b.cand&&bad),_amb:amb,_geoSus:sus,_geoBad:bad,_same:same,_rsrc:tr&&!same?tr.src:null,_rrisk:(tr&&!same?tr.risk||0:0)+(coarse&&rm?Math.max(8,Math.round(rm*0.35)):0),_rtm:tr?tr.tm:null,_coarse:coarse};
 }
 
 // ── 대기 비용: 짧은 대기는 그대로 손실, 즉시콜·임박콜로 채울 수 있는 긴 빈 시간은 손실이 아님 ──
@@ -3947,6 +3992,7 @@ async function bkTmFetch_(a,b,ms){
 }
 // 상세주소 → 정밀 좌표 (TMAP 장소검색 → 안 되면 주소 지오코딩). 동 중심에서 4km 넘게 벗어난 결과는 버림
 async function bkPGeoFetch_(addr,hint){
+ if(Array.isArray(hint)) return bkPGeoFetchAmb_(addr,hint);
  bkTmLoad_(); if(!addr) return null; const key=addr+'|'+((hint&&hint.n)||''); if(bkPGeo[key]!==undefined) return bkPGeo[key];
  if(typeof apiKey==='undefined'||!apiKey) return null;
  let best=null;
@@ -3959,11 +4005,21 @@ async function bkPGeoFetch_(addr,hint){
     if(la&&lo&&(!hint||dist(la,lo,hint.la,hint.lo)<=4)) best={la,lo,n:addr,src:'addr'}; } }catch(e){} }
  bkPGeo[key]=best; bkTmSave_(); return best;
 }
+// 같은 이름 동 후보가 여럿일 때: 장소 검색 결과가 후보 동 4km 안에 있고, 모두 같은 후보 근처일 때만 확정
+async function bkPGeoFetchAmb_(addr,alts){
+ bkTmLoad_(); if(!addr) return null; const key=addr+'|amb:'+alts.map(a=>a.g).join(','); if(bkPGeo[key]!==undefined) return bkPGeo[key];
+ if(typeof apiKey==='undefined'||!apiKey) return null; let best=null;
+ try{ const L=typeof poiSearch==='function'?await poiSearch(addr):[];
+  const near=L.map(p=>{ const a=alts.slice().sort((x,y)=>dist(p.la,p.lo,x.la,x.lo)-dist(p.la,p.lo,y.la,y.lo))[0]; return {p,a,d:dist(p.la,p.lo,a.la,a.lo)}; }).filter(x=>x.d<=4);
+  const gs=[...new Set(near.map(x=>x.a.g))]; if(near.length&&gs.length===1) best={la:near[0].p.la,lo:near[0].p.lo,n:near[0].p.n,src:'poi',g:gs[0]}; }catch(e){}
+ bkPGeo[key]=best; bkTmSave_(); return best;
+}
 // 예약 레코드의 상세주소 좌표 채우기 (후보·수락 모두). 새로 채운 수 반환
 async function bkPGeoFill_(list){
  let n=0; for(const b of list){ for(const side of ['from','to']){ const ad=b[side+'Addr'], kla=side==='from'?'fla':'tla', klo=side==='from'?'flo':'tlo';
-   if(!ad||b[kla]!=null) continue; const hint=bkGeo_(b[side]); const hg=hint&&hint.alts?hint.alts[0]:hint;
-   const p=await bkPGeoFetch_(ad+(hg&&hg.g&&!ad.includes(hg.g)?' '+hg.g:''),hg); if(p){ b[kla]=p.la; b[klo]=p.lo; b[side+'Pn']=p.n; n++; } else b[side+'GeoX']=1; } }
+   if(!ad||b[kla]!=null) continue; const hint=bkGeo_(b[side]); let hg=hint&&hint.alts?hint.alts[0]:hint;
+   if(hint&&hint.alts&&hint.alts.length>1){ try{ const n=bkNode_(b), A=n._amb; hg=A&&A.unsure?hint.alts:(side==='from'?n._f:n._t); }catch(e){} }   // 불확실하면 후보 동 전부를 기준으로 찾고, 한 곳 근처로만 나올 때 확정
+   const p=await bkPGeoFetch_(ad+(hg&&!Array.isArray(hg)&&hg.g&&!ad.includes(hg.g)?' '+hg.g:''),hg); if(p){ b[kla]=p.la; b[klo]=p.lo; b[side+'Pn']=p.n; n++; } else b[side+'GeoX']=1; } }
  return n; }
 // 지금 계획에 쓰이는 구간들의 TMAP 시각 예측을 미리 받아 둠 (운행·연결 공차). 새 값이 생기면 true
 let _bkTmBusy=false;
@@ -5076,7 +5132,7 @@ if($('pc_home')){ const hv=($('pc_home').value||'').trim();
      if(f.trim()!==(b.fromAddr||'')){ b.fromAddr=f.trim()||undefined; delete b.fla; delete b.flo; }
      if(t2.trim()!==(b.toAddr||'')){ b.toAddr=t2.trim()||undefined; delete b.tla; delete b.tlo; }
      await Store.set(KEY_BOOK,books); renderBook(); return; }
-   if(a){ const b=books.find(x=>x.id===a.dataset.bkacc); if(b){ delete b.cand; await Store.set(KEY_BOOK,books); renderBook(); } }
+   if(a){ const b=books.find(x=>x.id===a.dataset.bkacc); if(b&&!bkAccOk_(b)) return; if(b){ delete b.cand; await Store.set(KEY_BOOK,books); renderBook(); } }
    else if(d){ books=books.filter(x=>x.id!==d.dataset.bkdel); await Store.set(KEY_BOOK,books); renderBook(); }
    else if(e.target.id==='cand_clear'){ if(!confirm('후보 콜을 모두 지울까요? (수락한 예약은 그대로)')) return;
     books=books.filter(x=>!x.cand); await Store.set(KEY_BOOK,books); renderBook(); }
@@ -5133,7 +5189,8 @@ function renderPeak_(){
 
 // 🎯 상세주소 한 줄 (사진에서 읽은 건물명·도로명) + 정밀 좌표 여부
 function bkAddrLine_(c){
- const f=c.fromAddr, t=c.toAddr; if(!f&&!t) return '';
+ const W=bkGeoWarn_(c), f=c.fromAddr, t=c.toAddr; if(!f&&!t) return W; return W+bkAddrLine0_(c,f,t); }
+function bkAddrLine0_(c,f,t){
  // 그 건물·장소에서 예약콜이 몇 번 나왔나(사진 기록) — 2번 이상이면 표시
  const cnt=(ad,dg)=>{ try{ const R=bkPlaceOf_(ad,dg); return R.x&&R.P.lvl!=='D'&&R.x.n>=2?` <span class="pcnt">이 장소 예약 ${R.x.n}회</span>`:''; }catch(e){ return ''; } };
  const pin=(ad,ok)=>ad?`${bkEsc_(ad)}${ok?' 🎯':''}${cnt(ad,ad===f?c.from:c.to)}`:'';
@@ -5574,7 +5631,7 @@ function initCam_(){
      const dd=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||a.localeCompare(b))[0]||day; const P=dd?bkCamChain_(dd):null;
      if(P){ P.r.calls.forEach(c=>{ const b=books.find(x=>x.id===c.id); if(b) delete b.cand; }); await Store.set(KEY_BOOK,books); bkCamPK.k=''; bkCamPaint_(); bkRenderSoon_(); } return; }
    const a=e.target.closest('[data-camacc]'); if(!a) return;
-   const b=books.find(x=>x.id===a.dataset.camacc); if(b){ delete b.cand; await Store.set(KEY_BOOK,books); bkCamPK.k=''; bkCamPaint_(); bkRenderSoon_(); } });
+   const b=books.find(x=>x.id===a.dataset.camacc); if(b&&!bkAccOk_(b)) return; if(b){ delete b.cand; await Store.set(KEY_BOOK,books); bkCamPK.k=''; bkCamPaint_(); bkRenderSoon_(); } });
  // 폰 기본 카메라(앱 안 카메라를 못 쓸 때) — 찍은 1장을 바로 분석
  if($('bk_cap')) $('bk_cap').onchange=e=>{ const fs=[...(e.target.files||[])]; e.target.value='';
    if(!fs.length) return; if(geminiKey) bkQueueFiles_(fs); else ocrRun(fs[0]); };
