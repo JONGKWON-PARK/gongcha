@@ -143,7 +143,7 @@ header .clk{margin-left:auto;font-size:15px}
 .gapact button[data-gapnow]{border-color:var(--occ);color:var(--occ)}
 .ptl .row .pacc.all,.pacc.all{display:block;width:100%;margin-top:6px;padding:9px;font:inherit;font-size:13px;font-weight:700;background:var(--occ);color:#000;border:0;border-radius:7px}
 .cday{font-size:11.5px;font-weight:700;color:var(--amber);margin:10px 2px 5px;padding-bottom:3px;border-bottom:1px solid var(--line)}
-.purg{font-size:11px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 4px}.purg.hi{color:var(--vac);border-color:var(--vac)}.think{border-left:3px solid var(--amber);padding-left:6px}
+.purg{font-size:11px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 4px}.purg.hi{color:var(--vac);border-color:var(--vac)}.think{border-left:3px solid var(--amber);padding-left:6px}.pcall{border-left:3px solid #6aa9ff;padding-left:6px;margin-top:3px}.why{border-left:3px solid var(--occ);padding-left:6px;margin-top:3px}
 .pimm{font-size:10px;padding:1px 5px;border:1px solid var(--vac);color:var(--vac);border-radius:4px}
 .rc{display:inline-block;font-size:10.5px;padding:1px 6px;border:1px solid;border-radius:4px;line-height:1.5}
 .cd{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 11px 10px 14px;margin-bottom:7px;overflow:hidden}
@@ -2894,20 +2894,31 @@ function bkStreetTable_(){
  const avg=M>0?F/(M/60):BK_S_DEF;
  const h=by.map(b=>{ if(!b.n) return Math.round(avg); const r=b.f/(b.m/60), w=b.n/(b.n+8); return Math.round(r*w+avg*(1-w)); });
  // 보정: 운행기록 시급은 긴 대기·휴식(2시간 미만 공차만 포함)을 덜 반영해 낙관적 → 실제 하루 결과(매출 ÷ 근무시간, 5시간 이상 근무일)에 맞춘다
+ // 10.25 JK: '즉시콜로 10시간 30만'이 실제 → 최근 35일 하루 결과(매출 ÷ 근무시간, 5시간 이상)에 그대로(100%) 맞춤. 시간대별 모양은 운행기록에서
+ //  (예전: 평균 대기 30분 가정 × 위험 0.95 → 시간당 약 2.4만으로 실제 3.0만보다 20% 낮았음)
  let cal=0.9, real=null;
- try{ const HH=(typeof history!=='undefined'&&Array.isArray(history))?history.filter(x=>x&&x.hours>=5&&x.rev>0):[];
-  if(HH.length>=3&&N>=20){ real=HH.reduce((t,x)=>t+x.rev,0)/HH.reduce((t,x)=>t+x.hours,0); cal=Math.min(1,Math.max(0.7,real/avg)); } }catch(e){}
- if(IW>0) cal=1;   // 대기를 직접 넣었으면 하루 결과 보정은 하지 않음 (이미 보수적)
- const k=cal*BK_S_RISK;
+ try{ const HA=(typeof history!=='undefined'&&Array.isArray(history))?history.filter(x=>x&&x.hours>=5&&x.rev>0):[], cut=bkYmd_(Date.now()-35*86400e3), HR=HA.filter(x=>String(x.date||'')>=cut), HH=HR.length>=5?HR:HA;
+  if(HH.length>=3&&N>=20){ real=HH.reduce((t,x)=>t+x.rev,0)/HH.reduce((t,x)=>t+x.hours,0); cal=Math.min(1.6,Math.max(0.6,real/avg)); } }catch(e){}
+ const k=real?cal:cal*BK_S_RISK;
  DW.sort((x,y)=>x-y);
  _bkS={at:Date.now(),raw:Math.round(avg),avg:Math.round(avg*k),real:real&&Math.round(real),k,h:h.map(x=>Math.round(x*k)),n:N,iw:IW,dwMed:DW.length?Math.round(DW[DW.length>>1]):null,dwP90:DW.length?Math.round(DW[Math.floor(DW.length*0.9)]):null}; return _bkS;
 }
 // 확실성 할인 5%: 즉시콜은 하차지를 모르고, 빈 시간엔 다음 픽업 전에 내려야 해 콜을 가려 받는다(확정 요금인 예약과 비교)
 const BK_S_RISK=0.95;
 function bkStreetRate_(hour){ const T=bkStreetTable_(); return T.h[((hour|0)%24+24)%24]||T.avg; }
-// ── 예약 우선 모드 (JK 10.15): 즉시콜은 하차지를 몰라 다음 예약과 엇갈릴 위험이 있으니, 켜면 즉시콜 시급을 75%로만 쳐서
-//  '즉시콜보다 못함'으로 끊기던 예약 연결을 더 이어 준다 (예약으로 40만 선점 전략). 끄면 내 즉시콜 시급 그대로 비교
-const BK_RF=0.75;
+// ── 예약 우선 모드 (JK 10.15 → 10.25 바꿈): 즉시콜도 내 실제 시급 100%로 계산 (JK: 10시간 30만 · 12시간 40만 — 기록과 맞음)
+//  예약 우선은 '하루 예상이 즉시콜 예상의 흔들림 안에서 비슷하면 확정 예약이 많은 쪽'으로만 작동 (bkBetter_)
+//  예전(10.15~10.25): 즉시콜을 75%로 깎아 예약을 더 넣었음 → 하루 예상이 실제보다 낮게 나오고 손해 콜이 섞임
+const BK_RF=1.0;
+// 즉시콜 하루 시급의 흔들림(변동계수): 최근 35일 8시간 넘게 일한 날의 시간당 매출(매출 ÷ 근무시간) 표준편차 ÷ 평균 (10.25 기준 16%)
+let _bkCV=null;
+function bkInstCV_(){ if(_bkCV&&Date.now()-_bkCV.at<3600000) return _bkCV.v; let v=0.13;
+ try{ const cut=bkYmd_(Date.now()-35*86400e3), R=((typeof history!=='undefined'&&Array.isArray(history))?history:[]).filter(x=>x&&x.hours>=8&&x.rev>0&&String(x.date||'')>=cut).map(x=>x.rev/x.hours); if(R.length>=6){ const m=R.reduce((s,x)=>s+x,0)/R.length, sd=Math.sqrt(R.reduce((s,x)=>s+(x-m)**2,0)/(R.length-1)); v=Math.min(0.25,Math.max(0.05,sd/m)); } }catch(e){}
+ _bkCV={at:Date.now(),v}; return v; }
+// 두 하루 계획 비교: 하루 예상이 더 크면 그쪽. 예약 우선 모드에서는 차이가 '즉시콜 예상 차이 × 흔들림' 안이면 확정 예약 매출이 큰 쪽
+function bkBetter_(b,a){ if(!a) return true; if(!b) return false; const fb=b.fc||{}, fa=a.fc||{}, d=(fb.total||0)-(fa.total||0);
+ const tol=Math.max(BK_TIE,planCfg&&planCfg.rf?bkInstCV_()*Math.abs((fb.fill||0)-(fa.fill||0)):0);
+ if(d>tol) return true; if(d<-tol) return false; return (b.rev||0)>(a.rev||0)+1000||((b.rev||0)>=(a.rev||0)-1000&&d>BK_TIE); }
 function bkOppRate_(hour,ms){ const base=bkStreetRate_(hour)*(typeof planCfg!=='undefined'&&planCfg.rf?BK_RF:1);
  if(ms!=null){ try{ const b=bkBid_(ms); if(b&&b.v>base) return b.v; }catch(e){} } return base; }
 let bkUpLog=[];
@@ -3367,7 +3378,7 @@ const bkShrV_=V=>V?(V.mean+BK_GC.beta*(V.v-V.mean))*bkRecInstCal_():0;
 function bkGapOpts_(A,fromMs,leave,next,F){
  const free=Math.round((leave-fromMs)/60000), conn=Math.round((next._s-fromMs)/60000), safe=bkImmSafe_(), O=[];
  const rf=bkResFill_(A,fromMs,next._f,next._s), wr=rf&&rf.fare?Math.round(rf.pg*rf.fare):0;
- O.push({k:'wait',ev:wr,p:rf?rf.pg:null,fare:rf?rf.fare:0,days:rf?rf.days:0,cal:rf?rf.cal:1});
+ O.push({k:'wait',ev:wr,p:rf?rf.pg:null,pa:rf?rf.p:null,fare:rf?rf.fare:0,days:rf?rf.days:0,cal:rf?rf.cal:1});
  if(conn>=safe){ const V=bkValH_(A,fromMs,free); if(V) O.push({k:'inst',ev:Math.round(Math.max(wr,bkShrV_(V))),V}); }
  const TVm=bkOppRate_(bkHour_(fromMs),fromMs)/60;   // 빈칸을 넘겨 늘어나는 시간의 기회비용(서울 즉시콜 시급, 분당)
  (F&&F.fits||[]).filter(f=>f.c.fare>0).slice(0,5).forEach(f=>{ const c=f.c, dt=Math.max(0,f.dt||0), over=Math.max(0,dt-free), rem=free-dt; let after=0;   // dt = 이 콜을 넣어 연결 전체에 늘어나는 시간(공차·선도착·운행)
@@ -3395,7 +3406,7 @@ function bkRecNote_(ctx,A,fromMs,leave,next,X){
  try{ if(!ctx||!next||!next.id||!X||!X.O.length||leave<=Date.now()) return;
   const id=ctx.day+'|'+(ctx.prev||'start')+'>'+next.id; let e=bkRecLog.find(x=>x.id===id); try{ if(window._bkRecR&&window._bkRecR.day===ctx.day) window._bkRecR.ids.add(id); }catch(err){}
   const b=X.O[0], w=X.O.find(o=>o.k==='wait'), ins=X.O.find(o=>o.k==='inst');
-  const snap={at:Date.now(),k:b.k,ev:b.ev,cand:b.k==='acc'?b.c.id:null,candFare:b.k==='acc'?b.c.fare:0,pg:w&&w.p!=null?Math.round(w.p*1000)/1000:null,cal:w&&w.cal||1,wEv:w?w.ev:0,iEv:ins?ins.ev:null,a:fromMs,b:leave,free:X.free,conn:X.conn,safe:X.safe};
+  const snap={at:Date.now(),k:b.k,ev:b.ev,cand:b.k==='acc'?b.c.id:null,candFare:b.k==='acc'?b.c.fare:0,pg:w&&w.p!=null?Math.round(w.p*1000)/1000:null,pa:w&&w.pa!=null?Math.round(w.pa*1000)/1000:null,cal:w&&w.cal||1,wEv:w?w.ev:0,iEv:ins?ins.ev:null,a:fromMs,b:leave,free:X.free,conn:X.conn,safe:X.safe};
   if(!e){ e={id,d:ctx.day,next:{id:next.id,t:next.t,from:next.from},la:Math.round(A.la*1e4)/1e4,lo:Math.round(A.lo*1e4)/1e4,first:snap,last:snap,n:1};
    bkRecLog.push(e); if(bkRecLog.length>BK_REC_MAX) bkRecLog=bkRecLog.slice(-BK_REC_MAX); bkRecSave_(); return; }
   if(e.out) return; const L=e.last;
@@ -3409,7 +3420,8 @@ function bkRecResolve_(){ const now=Date.now(); let ch=0, T=null;
   const inG=T.filter(t=>t.start>=L.a-5*60000&&t.start<L.b&&t.bookId!==e.next.id);
   const ride=inG.reduce((s,t)=>s+Math.max(0,(Math.min(t.end,L.b)-t.start)/60000),0);
   const kd=t=>t.kind==='imm'?'imm':(t.bookId||t.kind==='reserved')?'res':'inst';
-  e.out={at:now,worked,filled:inG.length>0,n:inG.length,rev:inG.reduce((s,t)=>s+(+t.fare||0),0),kinds:[...new Set(inG.map(kd))],idle:Math.max(0,Math.round(L.free-ride)),
+  let appear=null, cov=0; try{ const t0=(e.first&&e.first.at)||0, a=L.a+10*60000; (bkSeenLog||[]).forEach(x=>{ if(!x||x.d!==e.d||!(x.seen>=t0)) return; const pu=new Date(`${x.d}T${x.t}`).getTime(); if(pu<a||pu>L.b) return; cov++; if(appear) return; let g=null; try{ const n=bkNode_({d:x.d,t:x.t,from:x.from,to:x.to,fromAddr:x.fromAddr,fare:x.fare,fk:x.fk}); g=n&&n._f; }catch(err){} if(g&&dist(g.la,g.lo,e.la,e.lo)<=2.5) appear=true; }); if(appear==null&&cov>=5) appear=false; }catch(err){}
+  e.out={at:now,worked,appear,cov,filled:inG.length>0,n:inG.length,rev:inG.reduce((s,t)=>s+(+t.fare||0),0),kinds:[...new Set(inG.map(kd))],idle:Math.max(0,Math.round(L.free-ride)),
    accRec:L.cand?T.some(t=>t.bookId===L.cand):null,nextDone:T.some(t=>t.bookId===e.next.id)}; ch++; }
  if(ch){ _bkRecC=null; bkRecSave_(); } return ch; }
 function bkRecAll_(){ const HD=bkHistDec_(); if(!HD||!HD.rec.length) return bkRecLog; const ids=new Set(bkRecLog.map(e=>e.id)); return bkRecLog.concat(HD.rec.filter(e=>!ids.has(e.id))); }   // 휴대폰 + 서버(휴대폰을 바꿔도 이어짐)
@@ -3420,6 +3432,7 @@ function bkRecStats_(){ const R=bkRecAll_().filter(e=>e.out&&e.out.worked), safe
   W:{n:W.length,sp:W.reduce((s,e)=>s+raw(e),0),sy:W.filter(e=>e.out.kinds.some(k=>k!=='inst')).length},
   I:{n:I.length,pe:I.reduce((s,e)=>s+e.last.iEv,0),ye:I.reduce((s,e)=>s+e.out.rev,0)},
   A:{n:Ac.length,acc:Ac.filter(e=>e.out.accRec).length},
+  P:(()=>{ const Q=bkRecAll_().filter(e=>e.out&&e.last&&e.last.pa!=null&&e.out.appear!=null); return {n:Q.length,sp:Q.reduce((s,e)=>s+e.last.pa,0),sy:Q.filter(e=>e.out.appear).length}; })(),
   idle:R.length?Math.round(R.reduce((s,e)=>s+e.out.idle,0)/R.length):0}; }
 // 잡을 확률 보정 배수 = (실제 채운 칸 + 5) / (예측 확률 합 + 5) — 20칸 미만이면 1 (사전값 1에 표본만큼 다가감)
 function bkRecCal_(){ const nk=bkRecLog.length+'|'+(bkHist?bkHist.built:''); if(_bkRecC&&_bkRecC.n===nk) return _bkRecC.c; let c=1, ic=1;
@@ -3432,7 +3445,8 @@ function bkRecHtml_(){ try{ const S=bkRecStats_(); if(!S.n) return `<div class="
   const w=S.W.n?`예약 기다림 ${S.W.n}칸: 예측 ${S.W.sp.toFixed(1)}칸 채움 → 실제 <b>${S.W.sy}칸</b>${S.W.n>=20?` · 보정 ×${c.toFixed(2)} 적용 중`:` · ${20-S.W.n}칸 더 쌓이면 보정`}`:'';
   const i=S.I.n?`즉시콜 빈칸 ${S.I.n}칸: 예측 ${m(S.I.pe)} → 실제 <b>${m(S.I.ye)}</b> (${Math.round(S.I.ye/Math.max(1,S.I.pe)*100)}%)${S.I.n>=20?` · 보정 ×${ic.toFixed(2)} 적용 중`:''}`:'';
   const a=S.A.n?`수락 권장 ${S.A.n}번 중 <b>${S.A.acc}번</b> 그 콜을 탐`:'';
-  return `<div class="pup">📒 <b>추천 성적</b>(채점 ${S.n}칸 · 빈칸 평균 놀린 시간 ${S.idle}분): ${[w,i,a].filter(Boolean).join(' · ')}${bkTuneTxt_()}</div>`; }catch(e){ return ''; } }
+  let fx=''; try{ const HD=bkHistDec_(); if(HD&&HD.fix&&HD.fix.size){ const v=[...HD.fix.values()], ex=v.filter(x=>x.ex).length; fx=`<br>☁️ 드라이브 운행기록에서 고친 운행 ${v.length-ex}건${ex?` · 제외 ${ex}건`:''}을 학습에 반영`; } }catch(e){}
+  return `<div class="pup">📒 <b>추천 성적</b>(채점 ${S.n}칸 · 빈칸 평균 놀린 시간 ${S.idle}분): ${[w,i,a].filter(Boolean).join(' · ')}${bkTuneTxt_()}${fx}</div>`; }catch(e){ return ''; } }
 // ══ 🔧 자가 점검(매주): 하루씩 빼고 다시 배워 맞혀 보기(교차검증) → 가치표 믿음 β와 평일/주말 분리를 스스로 정함 ══
 //  우버 Michelangelo의 '예측을 실제 결과와 맞춰 보는 감시' + 정기 재학습과 같은 생각. 휴대폰이 쉬고 있을 때 하루치씩 나눠 계산(화면 멈춤 방지)
 //  β: 칸−서울평균 가치 차이가 실제 매출 차이로 얼마나 나타나나(회귀 기울기). 사전값 0.9(±0.25)와 표본 표준오차로 섞음(베이즈)
@@ -3466,6 +3480,75 @@ async function bkSelfTune_(force){
   planCfg.tune={at:Date.now(),n:r1.n,days:days.length,we,c1:r1.c,b:r1.b,se:r1.se,beta,wo,c5:r5?r5.c:null};
   try{ await Store.set(KEY_PLANCFG,planCfg); }catch(e){} bkTuneApply_(); bkHistReset_(); return planCfg.tune;
  }catch(e){ return null; } finally{ _bkTuneRun=false; } }
+// ══ 🧠 왜 이 콜 — 추천 콜마다 '앞 공차 → 이 콜 → 하차지에서 다음 연결'의 근거와, 이 콜을 뺐을 때와 비교한 하루 예상 차이 ══
+//  디디의 '이득(advantage)'처럼: 이 콜을 넣은 하루 − 이 콜 없이 그 시간을 즉시·임박콜로 채운 하루 (같은 평가식 bkForecast_ · 같은 모드)
+//  하차지가 서울 가치표 밖(분당·남양주 등)이면 영업지로 돌아오는 공차가 평가식에서 빠지고(bkZoneMin_), 그 뒤는 서울 평균으로 셈
+function bkWithout_(r,i){ if(!r||!r.calls||i<=0||i>=r.calls.length) return null;
+ const calls=r.calls.filter((_,k)=>k!==i).map(c=>({...c}));
+ if(i<calls.length){ const a=calls[i-1], b=calls[i]; try{ const t=bkTravelT_(a._t,b._f,a._end); b._dead=t.m; b._deadKm=t.km; b._wait=Math.max(0,Math.round((b._s-BK_LEAD*60000-(a._end+t.m*60000))/60000)); }catch(e){} }
+ const last=calls[calls.length-1]; return {...r,calls,rev:calls.reduce((s,c)=>s+(+c.fare||0),0),endMs:last._end}; }
+function bkWhy_(r,i,win){ try{ const c=r.calls[i]; if(!c||!c.cand||i===0) return '';
+  const p=r.calls[i-1], n=r.calls[i+1], m=v=>Math.round(v/1000)/10+'만', nm=G=>bkEsc_(bkAreaOf_(G)||G&&G.n||'');
+  const FW=bkForecast_(r,win), wo=bkWithout_(r,i), FO=wo?bkForecast_(wo,win):null, fw=FW.total, fo=FO?FO.total:null, d=fo==null?null:Math.round(fw-fo), band=planCfg.rf&&FO?bkInstCV_()*Math.abs(FO.fill-FW.fill):0;
+  const tied=(c._dead||0)+BK_LEAD+(c._ride||0), rate=c.fare?Math.round(c.fare/tied*60):0;
+  const pre=`앞: ${nm(p._t)||bkEsc_(p.to)} 하차 ${bkHM_(p._end)} → 공차 ${c._dead}분(${(c._deadKm||0).toFixed(1)}km) · 운행 ${c._ride}분 · ${fmt(c.fare)}원 = 묶이는 ${tied}분에 시간당 ${m(rate)}`;
+  let post=''; const V=bkVal_(c._t,c._end), pr=bkPredict_(c._t,c._end+10*60000,c._end+70*60000), zr=(()=>{ try{ return bkZoneMin_(c._t,bkHour_(c._end)).m; }catch(e){ return 0; } })();
+  const ps=pr?`1시간 안 예약 잡을 확률 ${Math.round(pr.pg*100)}%`:'';
+  const vs=V?`2시간 가치 서울 상위 ${V.pct}%`:(zr>0?`서울 가치표 밖 — 영업지까지 돌아오는 공차 ${zr}분`:'');
+  post=`뒤: ${nm(c._t)} 하차 ${bkHM_(c._end)} — ${[ps,vs].filter(Boolean).join(' · ')}`+(n?` · 다음 ${n.t} ${bkEsc_(String(n.from).replace(/^(서울|경기|인천)\s*/,''))}까지 공차 ${n._dead}분${Math.round((n._s-c._end)/60000)-n._dead-BK_LEAD>=20?` (빈 ${Math.round((n._s-c._end)/60000)-n._dead-BK_LEAD}분)`:''}`:' · 마지막 콜');
+  const dTxt=d==null?'':d<0&&-d<=Math.max(BK_TIE,band)?`빼고 즉시콜로 채우면 하루 예상 +${m(-d)}이지만, 즉시콜 예상의 흔들림(±${m(band)}) 안이라 확정 예약으로 넣음(예약 우선)`:d<0?`<b style="color:var(--vac)">⚠️ 이 콜을 빼고 그 시간을 즉시·임박콜로 채우는 편이 하루 예상 ${m(-d)} 더 많음</b>`:d<5000?`이 콜이 없을 때보다 하루 예상 +${m(d)} — 즉시콜과 비슷(근처에 더 나은 콜이 있으면 바꿔도 됨)`:`이 콜이 없을 때(그 시간 즉시·임박콜)보다 하루 예상 <b>+${m(d)}</b>`;
+  return `<div class="mt why">🧠 <b>왜 이 콜</b>${planCfg.rf?' (즉시콜 100%로 계산 · 비슷하면 확정 예약 우선)':''}<br>${pre}<br>${post}<br>${dTxt}</div>`; }catch(e){ return ''; } }
+// 📌 예상 연결 콜 확률 보정: 되돌려보기 검증(10.16~24, 나중 사진이 5건 넘게 있는 빈칸 15칸: 예측 합 6.4칸 → 실제 3칸)을 사전값으로,
+//  📒 기록(빈칸마다 '근처에 실제로 올라왔나'를 나중 사진으로 채점)이 쌓이면 그 실측으로 계속 맞춤. 배수 = (실제 + 3 + 5) / (예측 + 6.4 + 5)
+const BK_PC0={sp:6.4,sy:3};
+function bkPcCal_(){ try{ const S=bkRecStats_().P; return Math.min(1.5,Math.max(0.3,(S.sy+BK_PC0.sy+5)/(S.sp+BK_PC0.sp+5))); }catch(e){ return 0.7; } }
+// ══ 📌 예상 연결 콜 — 빈칸마다 '어디서 · 몇 시에 · 어떤 콜이' 올 가능성이 높은지 (사진 기록 = 실제 운행된 예약콜) ══
+//  하차지 2.5km 안에서 빈칸 시간대에 출발하고, 운행 + 하차지→다음 예약 픽업(기존 이동시간)까지 맞는 과거 콜을 날마다 세어
+//  출발 동 × 도착 지역으로 묶음 → 하루 평균 건수 λ, 올라올 확률 1−e^−λ, 잡을 확률(다른 기사 선점 제외), 보통 시각·요금
+//  (T-Finder: 자리마다 태울 확률 × 다음 운행 몫 · 예약 제약: Hsieh 외 2022) — 전체 확률은 보정된 🔮 모델(bkResFill_)
+function bkGapCalls_(A,endMs,next,limMs){ try{ if(!A||A.la==null) return null; const I=bkPredIdx_(); if(I.days.length<3) return null;
+  const B=next&&next._f?next._s-BK_LEAD*60000:Math.min(limMs||endMs+100*60000,endMs+100*60000), w0=endMs+10*60000; if(B<=w0+20*60000) return null;
+  const day=bkYmd_(endMs), we=bkIsOffDay_(day), m0=bkMinOfDay_(w0), m1=Math.min(1439,m0+Math.round((B-w0)/60000));
+  const all=I.days.filter(d=>d!==day), same=all.filter(d=>I.we[d]===we), ds=new Set(same.length>=3?same:all), nD=ds.size;
+  const M=bkValModel_(), nm=(la,lo)=>{ try{ if(M){ const c=bkVCell_(la,lo); const t=M.top(M.names.get(c)); if(t) return t; } }catch(e){} return null; };
+  const base=new Date(new Date(endMs).toDateString()).getTime(), tc=new Map(), G=new Map(); let N=0;
+  I.rows.forEach(x=>{ if(!ds.has(x.d)||x.m<m0||x.m>m1||dist(A.la,A.lo,x.la,x.lo)>2.5) return;
+   if(x.tla!=null&&next&&next._f){ const ride=x.ride>0?x.ride:BK_GC.rideDef, pu=base+x.m*60000, k=Math.round(x.tla*200)+','+Math.round(x.tlo*200)+'|'+Math.floor((pu+ride*60000)/1800000);
+    let t=tc.get(k); if(t==null){ const d=bkTravelT_({la:x.tla,lo:x.tlo},next._f,pu+ride*60000); t=d?d.m:99; tc.set(k,t); } if(pu+(ride+t+BK_ERR)*60000>B) return; }
+   N++; const to=x.tla!=null?(nm(x.tla,x.tlo)||'?'):'?', key=(x.n||x.g||'?')+'→'+to; let g=G.get(key); if(!g){ g={from:x.n||x.g||'?',to,n:0,fares:[],ms:[],rides:[],la:0,lo:0,tla:0,tlo:0,nt:0}; G.set(key,g); }
+   g.n++; if(x.fare) g.fares.push(x.fare); g.ms.push(x.m); if(x.ride>0) g.rides.push(x.ride); g.la+=x.la; g.lo+=x.lo; if(x.tla!=null){ g.tla+=x.tla; g.tlo+=x.tlo; g.nt++; } });
+  const take=BK_PR.take[Math.floor(new Date(w0).getHours()/3)*3]||0.37, med=a=>{ const b=a.slice().sort((p,q)=>p-q); return b.length?b[b.length>>1]:0; };
+  const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+  const groups=[...G.values()].map(g=>{ const lam=g.n/nD, ms=g.ms.slice().sort((p,q)=>p-q); return {...g,lam,p:1-Math.exp(-lam),pg:1-Math.exp(-lam*(1-take)),fare:med(g.fares),ride:med(g.rides)||BK_GC.rideDef,tm:med(g.ms),t0:hm(ms[Math.floor(ms.length*0.2)]),t1:hm(ms[Math.floor(ms.length*0.8)]),la:g.la/g.n,lo:g.lo/g.n,tla:g.nt?g.tla/g.nt:null,tlo:g.nt?g.tlo/g.nt:null}; })
+   .sort((a,b)=>b.lam*(b.fare||25000)-a.lam*(a.fare||25000));
+  const R0=next&&next._f?bkResFill_(A,endMs,next._f,next._s):(()=>{ try{ return bkPredict_(A,w0,B,{fast:1}); }catch(e){ return null; } })(), cA=bkPcCal_();
+  const R=R0?{...R0,p:Math.min(0.95,R0.p*cA),pg:Math.min(0.95,R0.pg*cA)}:null; groups.forEach(g=>{ g.p=Math.min(0.95,g.p*cA); g.pg=Math.min(0.95,g.pg*cA); });
+  return {R,cA,groups,N,nD,lam:N/nD,win:[hm(m0),hm(m1)],shot:bkHM_(Math.max(Date.now(),w0-40*60000)),take}; }catch(e){ return null; } }
+function bkGapCallsHtml_(A,endMs,next){ const X=bkGapCalls_(A,endMs,next); if(!X) return ''; const m=v=>Math.round(v/1000)/10+'만';
+ if(!X.groups.length) return `<div class="mt pcall">📌 <b>예상 연결 콜</b>: ${X.win[0]}~${X.win[1]} 하차지 2.5km 안에서 출발해 다음 예약에 맞게 끝나는 예약콜이 사진 ${X.nD}일 동안 없었음 → 이 빈칸은 즉시콜·이동 대기로</div>`;
+ const pa=X.R?X.R.p:1-Math.exp(-X.lam), pg=X.R?X.R.pg:1-Math.exp(-X.lam*(1-X.take));
+ return `<div class="mt pcall">📌 <b>예상 연결 콜</b> (${X.win[0]}~${X.win[1]} 출발 · 다음 예약에 맞게 끝나는 콜만 · 사진 ${X.nD}일 · 실측 보정 ×${X.cA.toFixed(2)}): 하나라도 올라올 확률 <b>${Math.round(pa*100)}%</b> · 내가 잡을 확률 <b>${Math.round(pg*100)}%</b>`+
+  X.groups.slice(0,3).map(g=>`<br>· ${bkEsc_(g.from)} → ${bkEsc_(g.to)} ${g.t0===g.t1?g.t0:g.t0+'~'+g.t1} · 하루 ${g.lam.toFixed(1)}건 · 잡을 ${Math.round(g.pg*100)}%${g.fare?` · 보통 ${m(g.fare)}`:''}`).join('')+
+  `<br>→ <b>${X.shot}</b>부터 예약 목록 사진(임박콜은 픽업 1시간 안에 올라옴) · ${bkEsc_(X.groups[0].from)} 근처에서 대기</div>`; }
+// 🛣️ 마지막 예약 뒤 예상 연결 경로: 하차지에서 가장 기대값 큰 예상 콜(하루 건수 × 요금)을 따라 근무 끝까지 몇 단계 이어 봄 (탐욕적 펼치기)
+function bkTailPath_(G,t,endMs){ const out=[]; try{ let g=G, tt=t; for(let k=0;k<5&&tt<endMs-40*60000;k++){ const X=bkGapCalls_(g,tt,null,endMs); if(!X||!X.groups.length) break;
+   const top=X.groups.find(x=>x.tla!=null)||X.groups[0]; const base=new Date(new Date(tt).toDateString()).getTime(), pu=Math.max(tt+15*60000,base+top.tm*60000), end=pu+top.ride*60000;
+   out.push({from:top.from,to:top.to,t:bkHM_(pu),end,fare:top.fare,pg:X.R?X.R.pg:top.pg,lam:X.lam,nD:X.nD,shot:bkHM_(Math.max(Date.now(),pu-60*60000))});
+   if(top.tla==null) break; g={la:top.tla,lo:top.tlo}; tt=end; } }catch(e){} return out; }
+function bkTailHtml_(r,winEnd){ try{ const c=r.calls[r.calls.length-1]; if(!c||winEnd-c._end<60*60000) return ''; const P=bkTailPath_(c._t,c._end,winEnd); if(!P.length) return '';
+  const m=v=>Math.round(v/1000)/10+'만';
+  return `<div class="mt pcall">🛣️ <b>마지막 예약 뒤 예상 연결 경로</b> (${bkHM_(c._end)} ${bkEsc_(bkAreaOf_(c._t)||'')} 하차 → ${bkHM_(winEnd)}까지, 사진 기록에서 가장 자주 이어진 콜을 따라감):`+
+   P.map((x,i)=>`<br>${i+1}) ${x.t} ${bkEsc_(x.from)} → ${bkEsc_(x.to)}${x.fare?` 보통 ${m(x.fare)}`:''} · 이 시간 근처에서 하나라도 잡을 확률 ${Math.round(x.pg*100)}% · ${x.shot}부터 사진`).join('')+
+   `<br>못 잡으면 그 자리에서 즉시콜 (🧭 가치표의 추천 대기 장소)</div>`; }catch(e){ return ''; } }
+// 🎯 12시간 40만 경로: 확정 예약 + 빈칸마다(예상 연결 콜을 잡을 확률 × 요금, 못 잡으면 즉시콜) 를 3,000번 뽑아 40만 넘을 확률
+//  즉시콜 매출은 내 하루 흔들림(±CV)으로 흔들고, 예상 콜은 잡을 확률대로 — 몬테카를로(무작위 반복) 계산
+function bkGoalSim_(r,PK,win){ try{ const goal=planCfg.goal||400000, F=bkForecast_(r,win), cv=bkInstCV_(); const gaps=[];
+  for(let k=1;k<r.calls.length;k++){ const a=r.calls[k-1], b=r.calls[k], X=bkGapCalls_(a._t,a._end,b); const seg=F.seg.find(s=>s.a===a._end); const inst=seg?seg.won:0;
+   if(X&&X.groups.length&&X.R){ const fare=X.groups[0].fare||25000; gaps.push({pg:X.R.pg,fare,inst,ride:0}); } else gaps.push({pg:0,fare:0,inst}); }
+  const other=F.total-r.rev-gaps.reduce((s,g)=>s+g.inst,0);   // 첫 콜 전·마지막 콜 뒤 즉시콜 몫
+  let hit=0, tot=0; const n=3000, rnd=(()=>{ let x=12345; return ()=>{ x=(x*1103515245+12345)%2147483648; return x/2147483648; }; })(), nrm=()=>{ let u=0,v=0; while(!u) u=rnd(); v=rnd(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); };
+  for(let i=0;i<n;i++){ const z=1+cv*nrm(); let t=r.rev+Math.max(0,other*z); gaps.forEach(g=>{ t+=rnd()<g.pg?Math.max(g.fare,g.inst*z):Math.max(0,g.inst*z); }); tot+=t; if(t>=goal) hit++; }
+  return {p:hit/n,mean:tot/n,goal,rev:r.rev,inst:F.fill,gaps}; }catch(e){ return null; } }
 // ⏳ 수락 순서: 선점 위험 × 요금(시간당 잃을 기대액) 큰 것부터
 function bkAccOrder_(calls){ try{ const L=calls.filter(c=>c.cand&&c.fare>0).map(c=>({c,r:bkGoneRisk_(c,2)})).filter(x=>x.r!=null); if(L.length<2) return '';
   L.sort((a,b)=>b.r*b.c.fare-a.r*a.c.fare); return `<div class="mt">⏳ <b>수락 순서</b>(먼저 사라질 콜부터): ${L.slice(0,6).map((x,i)=>`${i+1}) ${x.c.t} ${bkEsc_(x.c.from)} ${Math.round(x.c.fare/1000)/10}만 · ${Math.round(x.r*100)}%`).join(' · ')}</div>`; }catch(e){ return ''; } }
@@ -3485,7 +3568,7 @@ function bkGapFits_(chain,i,cands,cfg){
 //  win={startMs,endMs}: 근무 창(시작~시작+근무상한). 예약 사이 빈 시간은 bkWaitCost_와 같은 규칙으로 '쓸 수 있는 분'만,
 //  마지막 하차 뒤 근무 끝까지는 전부(하차지 자유) 즉시·임박콜로 채운다고 본다.
 function bkUsable_(m){ return Math.max(0,m-bkWaitCost_(m)); }
-const bkWorkMax_=()=>Math.max(+planCfg.cap||10,+planCfg.capMax||12);
+const bkWorkMax_=day=>{ const x=day&&planCfg.ext&&planCfg.ext[day]; return x>0?+x:Math.max(+planCfg.cap||10,+planCfg.capMax||12); };   // 그날 고른 연장 근무가 있으면 그 시간
 function bkForecast_(r,win){
  const seg=[]; const add=(a,b,tail,loc,mid)=>{ const m=(b-a)/60000; if(m<=0) return; let u=tail?m:bkUsable_(m), zr=0;
    if(loc&&u>0){ try{ zr=Math.min(u,bkZoneMin_(loc,bkHour_(a)).m); u-=zr; }catch(e){} }   // 영업지 밖에서 내렸으면 돌아오는 동안은 즉시콜 못 받음
@@ -3500,12 +3583,12 @@ function bkForecast_(r,win){
    seg.push({a,b,m:Math.round(m),u:Math.round(u),won:Math.round(won),s:Math.round(won/(u/60)),tail:!!tail,zr:Math.round(zr),gr}); };
  if(r&&r.calls&&r.calls.length){
   const c0=r.calls[0], dep0=c0._s-(BK_LEAD+c0._dead+(c0._wait||0))*60000;
-  if(dep0-win.startMs>=BK_WAIT_FREE*60000) add(win.startMs,dep0,false);
+  if(win.pre!==false&&dep0-win.startMs>=BK_WAIT_FREE*60000) add(win.startMs,dep0,false);   // 10.25: 내일 계획(자동 출발)은 첫 콜로 떠날 때가 근무 시작 — 그 전 시간을 즉시콜로 채운다고 세지 않음
   for(let k=1;k<r.calls.length;k++){ const a=r.calls[k-1], b=r.calls[k];
    const leave=b._s-(BK_LEAD+BK_ERR+(b._drisk||0)+b._dead)*60000; add(a._end,leave,false,a._t,true); }
-  const capEnd=dep0+bkWorkMax_()*3600000;   // 10.25: 하루 모드(근무 끝 23:59)여도 즉시콜로 채운다고 셀 수 있는 건 근무 상한(기본 12시간)까지
+  const capEnd=c0._s+(win.capH||bkWorkMax_(bkYmd_(win.startMs)))*3600000;   // 12시간 = 첫 예약 운행 시작(픽업)부터   // 10.25: 하루 모드(근무 끝 23:59)여도 즉시콜로 채운다고 셀 수 있는 건 근무 상한(기본 12시간)까지
   add(r.endMs,Math.max(r.endMs,Math.min(win.endMs,capEnd)),true,r.calls[r.calls.length-1]._t);
- } else add(win.startMs,Math.min(win.endMs,win.startMs+bkWorkMax_()*3600000),true);
+ } else add(win.startMs,Math.min(win.endMs,win.startMs+bkWorkMax_(bkYmd_(win.startMs))*3600000),true);
  const fill=Math.round(seg.reduce((t,x)=>t+x.won,0)), rev=r&&r.rev||0;
  const endMs=Math.max(win.endMs,r&&r.endMs||0), hrs=(endMs-win.startMs)/3600000;
  return {rev,fill,total:rev+fill,hrs,rate:hrs>0?(rev+fill)/hrs:0,seg,startMs:win.startMs,endMs};
@@ -3518,7 +3601,7 @@ function bkForecast_(r,win){
 //  빈 시간은 그 시간대 '내 즉시콜 시급'으로 채운다고 보고 예상 매출에 더한다(선택에는 영향 없음 — 표시용).
 function bkPlanPickOnce_(list,cfg){
  const floor=cfg.floor||40000, S=[], seen=new Set();
- const win={startMs:cfg.startMs,endMs:cfg.winEnd||cfg.startMs+(cfg.maxMin||600)*60000};
+ const win={startMs:cfg.startMs,endMs:cfg.winEnd||cfg.startMs+(cfg.maxMin||600)*60000,pre:cfg.pre,capH:cfg.capH};
  const add=r=>{ if(r&&r.calls&&r.calls.length){ const k=r.calls.map(c=>c.id).join(); if(!seen.has(k)){seen.add(k); r.fc=bkForecast_(r,win); S.push(r);} } return r; };
  // 기준선: 콜 하나하나가 4만/h 이상 몫을 해야 넣는다(기회비용 = 하한). 더 엄격한 기준(1.15·1.3배)도 만들어 비교
  [0.8,0.9,1,1.15,1.3].forEach(f=>add(dpChain_(list,{...cfg,tv:floor*f})));
@@ -3540,7 +3623,7 @@ function bkPlanPickOnce_(list,cfg){
  const key=r=>r.calls.map(c=>c.id).join(','), prevR=prevKey?S.find(r=>key(r)===prevKey):null;
  if(good.length){ pick=good.reduce((a,b)=>b.rev>a.rev||(b.rev===a.rev&&b.effRate>a.effRate)?b:a); mode='floor';
   if(prevR&&good.includes(prevR)&&prevR.rev>=pick.rev-BK_STICK) pick=prevR; }
- else { pick=pool.reduce((a,b)=>b.fc.total>a.fc.total+BK_TIE||(Math.abs(b.fc.total-a.fc.total)<=BK_TIE&&b.rev>a.rev)?b:a); mode='day';
+ else { pick=pool.reduce((a,b)=>bkBetter_(b,a)?b:a); mode='day';
   if(prevR&&pool.includes(prevR)&&prevR.fc.total>=pick.fc.total-BK_STICK) pick=prevR; }
  if(prevR&&pick===prevR) pick._sticky=true;
  // 빈 시간 채움: 고른 조합을 고정하고, 그 사이 빈 시간에 '그 시간 즉시콜보다 나은' 예약을 더 끼운다
@@ -3551,7 +3634,7 @@ function bkPlanPickOnce_(list,cfg){
   if(r2&&r2.calls&&!r2.mandFail&&keep.size&&r2.calls.filter(c=>keep.has(c.id)).length===keep.size&&!r2.calls.some(c=>c._late>0&&!pick.calls.some(p=>p.id===c.id&&p._late>0))){   // 늦는 연결이 새로 생기면 채택 안 함
    r2.calls.forEach(c=>{ const o=orig[c.id]; c.cand=o?o.cand:c.cand; if(!keep.has(c.id)) c._fill=true; });
    r2.fc=bkForecast_(r2,win);
-   if(r2.calls.some(c=>c._fill)&&r2.fc.total>pick.fc.total+500){ r2.fillOf=pick; pick=r2; }
+   if(r2.calls.some(c=>c._fill)&&r2.fc.total>pick.fc.total-1e9&&bkBetter_(r2,pick)){ r2.fillOf=pick; pick=r2; }
   } }catch(e){}
  try{ const M=bkMarginals_(pick,cfg); pick.calls.forEach((c,i)=>{ c._marg=M[i]; }); }catch(e){}
  return {pick,maxRate,mode,all:S,fc:pick.fc,street:bkStreetTable_(),cfg};
@@ -3601,13 +3684,34 @@ function bkPlanPick0_(list,cfg){
   const keep=new Set(res.pick.calls.map(c=>c.id).filter(id=>!banned.has(id)));
   const r=dpChain_(list.filter(b=>keep.has(b.id)||!b.cand),{...cfg,tv:1});
   if(!r||!r.calls||!r.calls.length) break;
-  r.fc=bkForecast_(r,{startMs:cfg.startMs,endMs:cfg.winEnd||cfg.startMs+(cfg.maxMin||600)*60000});
+  r.fc=bkForecast_(r,{startMs:cfg.startMs,endMs:cfg.winEnd||cfg.startMs+(cfg.maxMin||600)*60000,pre:cfg.pre,capH:cfg.capH});
   try{ const M=bkMarginals_(r,cfg); r.calls.forEach((c,i)=>{ c._marg=M[i]; }); }catch(e){}
   res={...res,pick:r,fc:r.fc};
  }
  if(res&&banned.size) res.isolated=[...banned.values()];
+ try{ res=bkPlanLS_(res,list.filter(b=>!banned.has(b.id)),cfg); }catch(e){}
  return res;
 }
+// 🔧 하루 전체 평가로 다듬기 — 연결 계산(DP)은 콜과 콜 사이만 보므로, 고른 연결을 '하루 예상'(같은 평가식) 기준으로
+//  후보 하나 빼기 · 하나 넣기를 반복해 더 좋아지면 바꿈 (차량 경로 문제의 대규모 이웃 탐색 LNS: Shaw 1998 · Ropke & Pisinger 2006)
+//  예: 11:00 왕십리→정자(4.96만)를 넣으면 정자에서 서울로 돌아오는 공차·이어 탈 콜 없음 때문에 하루 예상이 오히려 1.3만 줄어 → 뺌
+//  수락 예약은 건드리지 않고, 늦는 연결이 늘면 안 되며, 4만 기준(floor) 모드에서는 JK 규칙 그대로 둠
+function bkPlanLS_(res,list,cfg){ if(!res||!res.pick||res.mode==='floor'||planCfg.ls===0) return res;
+ const win={startMs:cfg.startMs,endMs:cfg.winEnd||cfg.startMs+(cfg.maxMin||600)*60000,pre:cfg.pre,capH:cfg.capH}, isC=new Set(list.filter(b=>b.cand).map(b=>b.id));
+ const build=ids=>{ const r=dpChain_(list.filter(b=>ids.has(b.id)||!b.cand),{...cfg,tv:1}); if(!r||!r.calls||!r.calls.length) return null;
+  if(r.calls.filter(c=>c.cand).length!==[...ids].filter(id=>isC.has(id)).length) return null; r.fc=bkForecast_(r,win); return r; };
+ let cur=res.pick, F=(cur.fc||bkForecast_(cur,win)).total; const L0=(cur.conflicts||[]).length, ids=new Set(cur.calls.filter(c=>c.cand).map(c=>c.id)), log=[];
+ const pool=list.filter(b=>b.cand&&b._geo&&b.fare>0&&b._s>=cfg.startMs&&b._s<=win.endMs).sort((a,b)=>b.fare-a.fare).slice(0,30);
+ for(let it=0;it<8;it++){ let best=null; const ok=r=>r&&(r.conflicts||[]).length<=L0&&bkBetter_(r,cur)&&(!best||bkBetter_(r,best.r));
+  for(const id of ids){ const x=new Set(ids); x.delete(id); const r=build(x); if(ok(r)) best={r,x,op:'-',id}; }
+  for(const b of pool){ if(ids.has(b.id)) continue; const x=new Set(ids); x.add(b.id); const r=build(x); if(ok(r)) best={r,x,op:'+',id:b.id}; }
+  if(!best) break; log.push({op:best.op,id:best.id,gain:Math.round(best.r.fc.total-F),dRev:Math.round(best.r.rev-cur.rev)}); cur=best.r; F=cur.fc.total; ids.clear(); best.x.forEach(v=>ids.add(v)); }
+ if(!log.length) return res;
+ try{ const M=bkMarginals_(cur,cfg); cur.calls.forEach((c,i)=>{ c._marg=M[i]; }); }catch(e){}
+ log.forEach(l=>{ l.c=list.find(b=>b.id===l.id); });
+ return {...res,pick:cur,fc:cur.fc,ls:log}; }
+function bkLsHtml_(PK){ try{ if(!PK||!PK.ls||!PK.ls.length) return ''; const li=c=>`${c.t} ${bkEsc_(String(c.from).replace(/^(서울|경기|인천)\s*/,''))}→${bkEsc_(String(c.to).replace(/^(서울|경기|인천)\s*/,''))} ${Math.round(c.fare/1000)/10}만`;
+  return `<div class="pup go">🔧 <b>하루 전체로 다시 따져 조정</b>(콜 사이만 보던 연결 계산을 하루 예상 기준으로 점검): `+PK.ls.map(l=>`${l.op==='-'?'− 뺌':'＋ 넣음'} ${l.c?li(l.c):''} (하루 예상 ${l.gain>=0?'+':'−'}${Math.round(Math.abs(l.gain)/1000)/10}만${l.gain<0?' — 즉시콜 예상 흔들림 안이라 확정 예약 우선':''})`).join(' · ')+`</div>`; }catch(e){ return ''; } }
 // ── 사진 비교: 같은 콜 알아보기 (인식 글자가 조금 달라도 — '서울 반포2동'·'반포2동', '인천공항 T1'·'인천공항T1') ──
 function bkNormPlace_(s){
  let t=String(s||'').replace(/[()（）\[\]\s·.,]/g,'');
@@ -3784,7 +3888,7 @@ function bkRate_(b,ctx){
   slack=Math.round((need2-arr2)/60000); if(arr2>need2) outLate=Math.round((arr2-need2)/60000); }
  const tied=dIn.m+BK_LEAD+c._ride+nm;
  const rate=c.fare>0?Math.round(c.fare/tied*60):0;
- const sr=bkOppRate_(bkHour_(c._s),c._s);                          // 그 시간 기준: 즉시콜(예약 우선 75%) 또는 나중에 올라올 예약의 기대가치 중 큰 값
+ const sr=bkOppRate_(bkHour_(c._s),c._s);                          // 그 시간 기준: 즉시콜(내 시급 100%) 또는 나중에 올라올 예약의 기대가치 중 큰 값
  let grade=!c.fare?'na':rate>=floor?'g':rate>=Math.min(sr,floor)?'y':'r';
  if(inLate||outLate) grade='x';
  const amb=[c._f,c._t].filter(x=>x&&x.amb).map(x=>`${x.n}→${x.g}`);
@@ -4844,9 +4948,9 @@ const IDB={ _db:null, mem:{},
    r.onupgradeneeded=()=>{ try{ r.result.createObjectStore('kv'); }catch(e){} }; r.onsuccess=()=>{ this._db=r.result; res(this._db); }; r.onerror=()=>res(null); }catch(e){ res(null); } }); },
  async get(k){ const db=await this.open(); if(!db) return this.mem[k]??null; return new Promise(res=>{ try{ const q=db.transaction('kv','readonly').objectStore('kv').get(k); q.onsuccess=()=>res(q.result??null); q.onerror=()=>res(this.mem[k]??null); }catch(e){ res(this.mem[k]??null); } }); },
  async set(k,v){ this.mem[k]=v; const db=await this.open(); if(!db) return; return new Promise(res=>{ try{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k); t.oncomplete=()=>res(); t.onerror=()=>res(); }catch(e){ res(); } }); } };
-function bkHistReset_(){ try{ _bkPrI=null; }catch(e){} try{ _bkVM=null; }catch(e){} try{ _bkRec=null; }catch(e){} try{ _bkGR=null; }catch(e){} try{ _bkRecC=null; _bkHD=null; }catch(e){} try{ _bkPK=null; }catch(e){} }
+function bkHistReset_(){ try{ _bkPrI=null; }catch(e){} try{ _bkS=null; _bkCV=null; }catch(e){} try{ _bkVM=null; }catch(e){} try{ _bkRec=null; }catch(e){} try{ _bkGR=null; }catch(e){} try{ _bkRecC=null; _bkHD=null; }catch(e){} try{ _bkPK=null; }catch(e){} }
 function bkModelApply_(model){ if(!model) return false; const {hc,ht,ha,hz,rec,...rest}=model; bkModel=Object.assign({at:Date.now()},rest);
- if(model.v>=2){ bkHist={built:model.built||String(Date.now()),hc:hc||null,ht:ht||null,ha:ha||null,hz:hz||null,rec:rec||null}; try{ IDB.set('modelh',bkHist); }catch(e){} }
+ if(model.v>=2){ bkHist={built:model.built||String(Date.now()),hc:hc||null,ht:ht||null,ha:ha||null,hz:hz||null,rec:rec||null,fix:model.fix||null}; try{ IDB.set('modelh',bkHist); }catch(e){} }
  try{ Store.set(KEY_MODEL,bkModel); }catch(e){} bkHistReset_(); return true; }
 // 장기 기억 풀기(한 번만): 사진 콜 행 · 운행 · 추천 성적
 let _bkHD=null;
@@ -4856,7 +4960,12 @@ function bkHistDec_(){ const H=bkHist; if(!H) return null; if(_bkHD&&_bkHD.b===H
  try{ const T=H.ht, Gn=(H.hc&&H.hc.G)||[]; if(T&&T.R) T.R.forEach(r=>o.trips.push({start:r[0],end:r[1],fla:r[2],flo:r[3],tla:r[4],tlo:r[5],fare:r[6],kind:r[7]===2?'imm':r[7]===1?'reserved':'instant',bookId:r[7]===1?'srv':undefined,flagShort:!!r[8],fromGu:Gn[r[9]]||null,toGu:Gn[r[10]]||null,srv:1})); }catch(e){}
  try{ const R=H.rec; if(R&&R.R) R.R.forEach(r=>o.rec.push({id:r[0],srv:1,last:{k:r[1],pg:r[2],cal:r[3],conn:r[4],safe:r[5],iEv:r[6]},out:{worked:!!r[10],kinds:r[7]?['res']:[],rev:r[8],accRec:r[9]===1?true:r[9]===0?false:null,idle:r[11]||0}})); }catch(e){}
  try{ (H.ha||[]).forEach(r=>o.ha.push({d:r[0],t:r[1],fromAddr:r[2],to:r[3],fare:r[4],from:r[5],toAddr:r[6]})); }catch(e){}
+ o.fix=new Map(); try{ (H.fix||[]).forEach(r=>o.fix.set(+r[0],{fare:r[1],kind:r[2]===2?'imm':r[2]===1?'reserved':'instant',from:r[3],to:r[4],ex:!!r[5]})); }catch(e){}
  _bkHD=o; return o; }
+// ☁️ 드라이브 '운행기록' 시트에서 기사가 고친 운행(요금·구분·장소) · 제외 → 앱의 모든 학습(즉시콜 시급·가치표·자가 점검)에 반영
+function bkFixApply_(T){ let F=null; try{ const HD=bkHistDec_(); F=HD&&HD.fix; }catch(e){} if(!F||!F.size) return T;
+ const out=[]; for(const t of T){ const x=t&&t.start?F.get(t.start):null; if(!x){ out.push(t); continue; } if(x.ex) continue;
+  const c={...t,fare:x.fare,from:x.from||t.from,to:x.to||t.to,kind:x.kind,_fixed:1}; if(x.kind==='instant'){ delete c.bookId; } out.push(c); } return out; }
 async function bkModelFetch_(force){
  try{ if(typeof cloudEnabled!=='function'||!cloudEnabled()) return false;
   if(!force&&bkModel&&bkModel.at&&Date.now()-bkModel.at<6*3600000) return false;
@@ -5051,7 +5160,8 @@ function bkPlanCtx_(off,opt){
 // 하루 전체(00:00~23:59)로 연결 — 몇 시간 할지는 기사가 누적 매출을 보고 결정 (퇴근 목표를 정하면 그 시각까지)
 function bkBaseCap_(C){
  const e=String(planCfg.end||'');
- if(!/^\d{1,2}:\d{2}$/.test(e)&&planCfg.dayMode!==0&&C&&C.anchor&&C.day){ const h=(new Date(`${C.day}T23:59`).getTime()-C.anchor)/3600000; if(h>=2) return Math.round(Math.min(20,h)*100)/100; }
+ // 10.25 JK: 기본 근무 10~12시간 안에 40만 → 하루 계획은 12시간(capMax)까지, 1~2시간 연장은 '근무시간 선택지'에서 고름
+ if(!/^\d{1,2}:\d{2}$/.test(e)&&planCfg.dayMode!==0&&C&&C.anchor&&C.day){ const h=(new Date(`${C.day}T23:59`).getTime()-C.anchor)/3600000; if(h>=2) return Math.round(Math.min(+planCfg.capMax||12,h)*100)/100; }
   if(/^\d{1,2}:\d{2}$/.test(e)&&C&&C.anchor){ let end=new Date(`${C.day}T${e.padStart(5,'0')}`).getTime(); if(end<=C.anchor) end+=86400000;
   const h=(end-C.anchor)/3600000; if(h>=2) return Math.round(Math.min(22,h)*100)/100; }
  return planCfg.cap||10;
@@ -5059,7 +5169,7 @@ function bkBaseCap_(C){
 function bkPlanBase_(C,capH){
  const H=capH||bkBaseCap_(C), winEnd=Math.max(C.anchor+H*3600000,C.startMs+3600000);
  return {startMs:C.startMs,startG:C.startG,homeG:C.homeG,floor:planCfg.floor||40000,
-  maxMin:Math.round((winEnd-C.startMs)/60000),winEnd,live:C.isToday,ret:planCfg.ret?1:0,capH:H,kpi:bkKpiCfg_(),prevKey:(()=>{ try{ return bkPrevGet_(C.day); }catch(e){ return ''; } })()};
+  maxMin:Math.round((winEnd-C.startMs)/60000),winEnd,live:C.isToday,pre:!C.auto||!!C.isToday,ret:planCfg.ret?1:0,capH:H,kpi:bkKpiCfg_(),prevKey:(()=>{ try{ return bkPrevGet_(C.day); }catch(e){ return ''; } })()};
 }
 // 10시간 플랜 → 예약이 목표(40만)에 못 미치면 12시간으로 늘려 다시 (늘려서 예약이 1만원 이상 늘 때만 채택)
 // 지난번 추천(날짜별 콜 id) — 추천 고정용
@@ -5070,7 +5180,16 @@ function bkPrevSet_(d,ids){ bkPrevGet_(d); if(bkPrevPick[d]===ids) return; bkPre
 // 🧠 예측 반영 플랜: 예측 없이 짠 하루(기존)와 예측(빈칸 크레딧)으로 짠 하루를 같은 평가식(하루 예상)으로 비교
 //  예측 쪽은 ① 하루 예상이 1천 원 넘게 크고 ② 확정 예약 매출이 3천 원 넘게 줄지 않고 ③ 늦는 연결이 늘지 않을 때만 채택
 //  → 예측이 틀려도 기존 추천보다 나빠지지 않음 (JK: 최고 매출 예약을 먼저 — 예측은 빈칸·연결을 고르는 데만)
+// 10.25: 처음 계산할 때와 '지난 추천'이 생긴 뒤 다시 계산할 때 결과가 달라지는 일이 있어(지역 탐색의 출발점 차이),
+//  지난 추천이 바뀌었으면 한 번 더 계산해 하루 예상이 더 좋은 쪽으로 고정 — 화면을 다시 그려도 추천이 흔들리지 않게
 function bkPlanBest_(C){
+ let prev0=''; try{ prev0=bkPrevGet_(C.day)||''; }catch(e){}
+ const C0={...C}; let R=bkPlanBestG_(C); if(!R||!R.PK||!R.PK.pick) return R;
+ const ids=R.PK.pick.calls.map(c=>c.id).join(','); if(ids===prev0) return R;
+ try{ const C1={...C0}; const R2=bkPlanBestG_(C1); if(R2&&R2.PK&&R2.PK.pick&&R2.PK.pick.calls.map(c=>c.id).join(',')!==ids&&bkBetter_(R2.PK.pick,R.PK.pick)&&(R2.PK.pick.conflicts||[]).length<=(R.PK.pick.conflicts||[]).length){ Object.assign(C,C1); R=R2; }
+  bkPrevSet_(C.day,R.PK.pick.calls.map(c=>c.id).join(',')); }catch(e){}
+ return R; }
+function bkPlanBestG_(C){
  if(!BK_GC.on||!bkKpiCfg_()) return bkPlanBestX_(C);
  const C0={...C}, C1={...C}; let R0=null, R1=null; const own=!_bkTTM; if(own){ _bkTTM=new Map(); _bkGCM=new Map(); }
  try{ BK_GC.on=0; try{ R0=bkPlanBestX_(C0); }catch(e){} finally{ BK_GC.on=1; }
@@ -5104,10 +5223,10 @@ function bkPlanBest1_(C){
  // 자동 출발: 근무 창이 '가장 이른 후보' 기준으로 잡혀 실제 첫 콜보다 훨씬 앞에서 시작하면, 첫 콜 출발 시각으로 창을 옮겨 다시 (근무 시간은 같음)
  //  (10.16: 05:00 후보 때문에 04:00~14:00 창이 잡혀 09:00 첫 콜 뒤 16:00·16:20 좋은 콜이 창 밖으로 빠지던 문제)
  if(R&&C.auto&&!R.override&&C.anchor===C.startMs&&!C.running){ let best=R;
-  for(let k=0;k<1;k++){ const dep=best.PK.pick.departMs-20*60000; if(!(dep-C.anchor>60*60000)) break;   // 20분 여유(출근길 교통 불확실성)
-   const C2={...C,startMs:dep,anchor:dep,winEnd:dep+(C.winEnd-C.anchor)}, R2=bkPlanBest0_(C2); if(!R2) break;
+  for(let k=0;k<1;k++){ const dep=best.PK.pick.departMs-20*60000; if(!(dep-C.anchor>20*60000)) break;   // 10.25: 20분 넘게 앞서 잡혀도 옮김(12시간 창을 실제 출발에 맞춤)   // 20분 여유(출근길 교통 불확실성)
+   const p0=best.PK.pick.calls[0]._s, C2={...C,startMs:dep,anchor:p0,winEnd:p0+(C.winEnd-C.anchor)}, R2=bkPlanBest0_(C2); if(!R2) break;   // 10.25 JK: 12시간은 첫 예약 운행 시작(픽업)부터
    const sc=x=>x.PK.mode==='floor'?2e9+x.PK.pick.rev:x.PK.fc.total;
-   if(sc(R2)>sc(best)+500&&R2.PK.pick.rev>=best.PK.pick.rev){ best={...R2,shifted:bkHM_(dep)}; C.startMs=dep; C.anchor=dep; C.winEnd=C2.winEnd; } else break; }
+   if(sc(R2)>sc(best)+500&&R2.PK.pick.rev>=best.PK.pick.rev){ best={...R2,shifted:bkHM_(dep)}; C.startMs=dep; C.anchor=p0; C.winEnd=C2.winEnd; } else break; }
   if(best!==R){ try{ bkPrevSet_(C.day,best.PK.pick.calls.map(c=>c.id).join(',')); }catch(e){} return best; } }
  if(R) try{ bkPrevSet_(C.day,R.PK.pick.calls.map(c=>c.id).join(',')); }catch(e){}
  return R;
@@ -5169,7 +5288,6 @@ function renderPlan_(){
   `<span>공차율 <b>${Math.round(r.deadRatio*100)}</b>%</span>${C.auto?'':`<span>시작 <b>${planCfg.start}</b></span>`}</div>`+
   `<div id="plan_ext" class="pextbox"><div class="ph">⏱️ 근무시간 선택지 — 계산 중…</div></div>`;
  clearTimeout(window._bkExtT);
- if(planCfg.dayMode!==0&&!planCfg.end){ const x=document.getElementById('plan_ext'); if(x){ x.hidden=true; x.innerHTML=''; } } else
  { const extNow=()=>{ try{ renderExt_(C,BEST); }catch(e){ const x=document.getElementById('plan_ext'); if(x) x.hidden=true; } };
    if(_bkExtC.k===bkExtKey_(C)) setTimeout(extNow,0);      // 이미 계산해 둔 것 → 바로 표시
    else window._bkExtT=setTimeout(function run(){ if(typeof bkCamOn_==='function'&&bkCamOn_()){ window._bkExtT=setTimeout(run,1500); return; } extNow(); },250); }   // 카메라가 열려 있으면 닫힐 때까지 미룸(예전엔 그냥 멈춰 '계산 중'으로 남음)
@@ -5211,7 +5329,7 @@ function renderPlan_(){
     const ar=bkAreaOf_(A)||A.n, br=bkAreaOf_(c._f)||c.from;
     return `<div class="mt">🔎 <b>이 칸에 넣을 콜</b>: ${bkHM_(pa)}~${bkHM_(pb)} 출발 · 출발지 ${bkEsc_(ar)} 근처(공차 15분 안) · ${bkHM_(leave-5*60000)}까지 ${bkEsc_(br)} 쪽에서 하차 — 임박콜·중간 사진에서 이 조건이면 넣으세요</div>`; })();
   const head=`<div class="gaprow ok"><div>⏳ ${bkHM_(fromMs)}~${bkHM_(leave)} · <b>${free}분 빈 시간</b> — 다음 ${c.t} ${bkEsc_(c.from)}${est?` · 채우면 약 <b>${fmt(est)}원</b>`:''}</div>`+icn(A,c._f)+(gi!=null?airBox(A,fromMs,leave,gi):'')+look+spotTxt(sp)+pkTxt(fromMs);
-  const gd=`data-gapd="${C.day}" data-gapa="${fromMs}" data-gapb="${leave}"`, fh=(gi!=null?bkGapThink_(A,fromMs,leave,c,getFits(gi),floor,C.isToday,{day:C.day,prev:gi>0&&r.calls[gi-1]?r.calls[gi-1].id:'start'}):'')+(gi!=null?fitsHtml(gi):'');
+  const gd=`data-gapd="${C.day}" data-gapa="${fromMs}" data-gapb="${leave}"`, fh=(gi!=null&&gi>0?bkGapCallsHtml_(A,fromMs,c):'')+(gi!=null?bkGapThink_(A,fromMs,leave,c,getFits(gi),floor,C.isToday,{day:C.day,prev:gi>0&&r.calls[gi-1]?r.calls[gi-1].id:'start'}):'')+(gi!=null?fitsHtml(gi):'');
   if(!C.isToday) return head+fh+`<div class="gapact"><button data-gapcam="1" ${gd}>📷 이 시간대 예약콜 더 찍기</button></div>`+
    (Math.round((c._s-fromMs)/60000)<bkImmSafe_()?`<div class="mt" style="color:var(--vac)">⛔ 즉시콜 금지 구간 — 빈 ${Math.round((c._s-fromMs)/60000)}분이 안전 창 ${bkImmSafe_()}분보다 짧음. 임박·예약콜로만 채우세요</div></div>`:`<div class="mt">당일엔 여기서 출발임박콜 사진 판정 · ⚡ 즉시콜(마감 ${bkHM_(until)}) 버튼이 뜹니다</div></div>`);
   const conn=Math.round((c._s-fromMs)/60000), safe=bkImmSafe_();
@@ -5238,6 +5356,7 @@ function renderPlan_(){
    (cr?` · 단독 실효 ${fmt(cr)}/h`:'')+`</div>`+
    (c._marg&&c.fare?`<div class="mt">연결 기여 <b style="color:var(--${c._marg.rate>=floor?'occ':c._marg.rate>=sr?'amber':'vac'})">${c._marg.rate===Infinity?'시간 추가 없음':fmt(c._marg.rate)+'/h'}</b>`+
     `${c._marg.rate!==Infinity?` (이 콜로 늘어난 시간 ${c._marg.dt}분)`:''}${c._marg.bridge&&c.cand?` · <span class="pbridge">🔗 브릿지 — 다음 픽업 공차 −${c._marg.saved}분</span>`:''}</div>`:'')+
+   (c.cand?bkWhy_(r,i,{startMs:PK.fc&&PK.fc.startMs||r.departMs,endMs:(PK.cfg&&PK.cfg.winEnd)||(PK.fc&&PK.fc.endMs)||r.endMs,pre:PK.cfg?PK.cfg.pre:undefined,capH:PK.cfg?PK.cfg.capH:undefined}):'')+
    (()=>{ const nx=r.calls[i+1]; if(nx&&(nx._s-c._end)<=60*60000) return ''; let P=null; try{ P=bkPredict_(c._t,c._end+10*60000,c._end+60*60000); }catch(e){} if(P) return `<div class="mt pnx">${bkPredTxt_(P)} — 하차 뒤 1시간 안 출발${P.pg<0.3?' · 이어 탈 콜 적은 곳':P.pg>=0.6?' · 이어 탈 콜 많은 곳':''}</div>`; const L=bkLinkProb_(c._t,c._end,C.day); return L?`<div class="mt">🔗 하차 뒤 ${bkEsc_(L.area)}에서 1시간 반 안에 출발하는 예약이 있던 날 <b>${L.k}/${L.n}일</b>${L.p>=0.6?' — 중간 사진에서 이어 붙일 확률 높음':L.p<0.3?' — 이어 붙이기 어려운 곳':''}</div>`:''; })()+
    (c._late?`<div class="mt" style="color:var(--vac)">⚠️ 앞 예약에서 오면 선도착에 ${c._late}분 부족 — 수락한 예약끼리 빠듯합니다</div>`:'')+
    (c._fuel?`<div class="mt" style="color:var(--amber)">⛽ 하차 뒤 ${bkEsc_(c._fuel.nm)} 충전 포함 (이동 ${c._fuel.toSt}분 + 충전 ${c._fuel.min}분) → ${bkHM_(c._fuel.done)} 출발</div>`+(c._fuel.rush?`<div class="mt prush">🚗 평일 출근길 출발 — 강남·도심은 올림픽대로·강변북로 약 ${+planCfg.rushMin||60}분 → 서부(목동·신정·등촌·염창·마곡) 예약 우선, 도심은 손님 태우고 들어가기</div>`:''):'')+
@@ -5251,7 +5370,7 @@ function renderPlan_(){
  // 마지막 하차 뒤: 하차지 자유 → 근무 끝까지 즉시·임박콜
  const last=r.calls[r.calls.length-1], tail=fc.seg.find(x=>x.tail);
  if(tail&&tail.m>=10){ const sp=bkGapSpot_(last._t,last._t,tail.a,tail.a+Math.min(tail.m,90)*60000);
-  h+=`<div class="gaprow ok"><div>🏁 ${bkHM_(tail.a)}~${bkHM_(tail.b)} · <b>${tail.m}분</b> 근무 끝까지 — 즉시·임박콜로 약 <b>${fmt(Math.round(tail.won/100)*100)}원</b> 예상</div>`+icn(last._t,null)+airBox(last._t,tail.a,tail.b,r.calls.length)+spotTxt(sp)+pkTxt(tail.a)+fitsHtml(r.calls.length)+
+  h+=`<div class="gaprow ok"><div>🏁 ${bkHM_(tail.a)}~${bkHM_(tail.b)} · <b>${tail.m}분</b> 근무 끝까지 — 즉시·임박콜로 약 <b>${fmt(Math.round(tail.won/100)*100)}원</b> 예상</div>`+icn(last._t,null)+airBox(last._t,tail.a,tail.b,r.calls.length)+bkTailHtml_(r,tail.b)+spotTxt(sp)+pkTxt(tail.a)+fitsHtml(r.calls.length)+
    (C.isToday?`<div class="gapact"><button data-gapcam="1" data-gapd="${C.day}" data-gapa="${tail.a}" data-gapb="${tail.b}">📷 임박콜 찍기 (우선)</button><button data-gapnow="${tail.b}" data-gapnext="근무 끝">⚡ 즉시콜</button></div>`:`<div class="gapact"><button data-gapcam="1" data-gapd="${C.day}" data-gapa="${tail.a}" data-gapb="${tail.b}">📷 이 시간대 예약콜 더 찍기</button></div>`)+`</div>`; }
  tl.innerHTML=h; try{ if(window._bkRecR&&window._bkRecR.day===C.day) window._bkRecR.done=true; }catch(e){}
  // 적극 제안
@@ -5273,19 +5392,24 @@ function renderPlan_(){
  if(C.early) u+=`<div class="pup go">⏱️ ${C.early.b.t} ${bkEsc_(C.early.b.from)} 예약을 예정보다 <b>${C.early.mins}분 일찍</b> 마쳤습니다 — 지금 위치·시각에서 다시 짠 연결입니다. 아래 빈 시간은 임박콜 사진이나 즉시콜로 채우세요</div>`;
  if(recN) u+=`<div class="pup go">✓ 추천 연결 ${r.calls.length}콜 중 <b>${recN}콜</b>이 아직 후보입니다 — 카카오T에서 순서대로 수락한 뒤 <b>수락함</b>을 누르세요`+
    (recN>1?` <button class="pacc all" data-bkaccall="1">추천 ${recN}콜 모두 수락함</button>`:'')+bkAccOrder_(r.calls)+`</div>`;
+ try{ const W={startMs:PK.fc&&PK.fc.startMs||r.departMs,endMs:(PK.cfg&&PK.cfg.winEnd)||(PK.fc&&PK.fc.endMs)||r.endMs,pre:PK.cfg?PK.cfg.pre:undefined,capH:PK.cfg?PK.cfg.capH:undefined}, S=bkGoalSim_(r,PK,W);
+  if(S){ const m=v=>Math.round(v/1000)/10+'만', c0=r.calls[0], gp=S.gaps.filter(g=>g.pg>0);
+   u+=`<div class="pup ${S.p>=0.5?'go':'warn'}">🎯 <b>12시간 40만 경로</b> (첫 예약 ${c0?c0.t:''} 시작 → ${bkHM_(W.endMs)}): 확정 예약 ${m(S.rev)} + 빈칸 예상 연결 콜 ${gp.length}칸(잡을 확률 ${gp.map(g=>Math.round(g.pg*100)+'%').join('·')}) + 즉시콜 → 평균 <b>${m(S.mean)}</b> · <b>40만 넘을 확률 ${Math.round(S.p*100)}%</b>`+
+    (S.p<0.5?`<br>올리는 법: 빈칸의 📌 예상 연결 콜 시각에 맞춰 사진을 찍어 선점 · 아래 ⏱️ 근무시간 선택지(연장분 시간당) 참고`:'')+`</div>`; } }catch(e){}
+ u+=bkLsHtml_(PK);
  u+=bkRecHtml_();
  if(PK.mode==='floor') u+=`<div class="pup">기준: 예약 연결의 <b>총시간당 ${fmt(floor)}원 이상</b>(베테랑 기준) 조합 중 <b>예약 매출이 가장 큰 것</b>을 선점합니다. 빈 시간은 임박콜(우선)·즉시콜로 채우며, 예상치는 그 시간대 내 즉시콜 시급(기록 ${ST.n}건, 평균 ${fmt(ST.avg)}원/h)으로 계산했습니다</div>`;
  else if(C.acc.some(b=>b._s>=C.startMs)) u+=`<div class="pup warn">⚠️ 수락한 예약을 포함하면 <b>총시간당 ${fmt(floor)}원</b>을 넘는 조합이 없어, 수락 예약은 그대로 두고 빈 시간을 <b>즉시콜보다 나은 예약</b>으로 채워 하루 예상 매출이 가장 큰 조합을 보여드립니다. 더 좋은 예약이 올라오면 바꿔 끼웁니다</div>`;
  else u+=`<div class="pup warn">⚠️ 올린 후보로는 <b>총시간당 ${fmt(floor)}원 이상</b> 되는 예약 연결이 없습니다 — 좋은 콜을 이미 다른 기사가 가져갔을 수 있습니다. 그래서 <b>연결 기여가 그 시간 즉시콜 시급(평균 ${fmt(Math.round(ST.avg*(planCfg.rf?BK_RF:1)))}원/h)보다 높은 예약만</b> 넣어 하루 예상 매출이 가장 큰 조합을 보여드립니다. 예약 사진을 자주 업데이트하세요</div>`;
  // 비교·보조 안내(예약 우선 비교 · 수락 예약 빼면 · 1시간 더 · 40만 진단)는 화면을 먼저 그린 뒤 계산 (JK 10.15 밤: 느림)
  const extras=()=>{ let u="";
- // 예약 우선 모드 비교: 즉시콜 시급을 75%로 보면 예약 연결이 얼마나 길어지나 (켜고 끌 수 있음)
+ // 예약 우선 모드 비교: 비슷한 하루라면 확정 예약이 많은 쪽을 고르면 연결이 어떻게 바뀌나 (켜고 끌 수 있음)
  try{ if(PK.mode!=='floor'||planCfg.rf){ const was=planCfg.rf; planCfg.rf=was?0:1; let A=null; try{ const B2=bkPlanBest0_({...C}); A=B2&&B2.PK; }finally{ planCfg.rf=was; }
    const ar=A&&A.pick; if(ar){ const add=ar.calls.filter(c=>!r.calls.some(x=>x.id===c.id)), drop=r.calls.filter(c=>!ar.calls.some(x=>x.id===c.id));
     const li=c=>`${c.t} ${bkEsc_(String(c.from).replace(/^서울\s*/,''))}→${bkEsc_(String(c.to).replace(/^서울\s*/,''))} ${Math.round(c.fare/1000)/10}만`;
-    if(!was&&(add.length||drop.length)) u+=`<div class="pup">🔁 <b>예약 우선</b>으로 보면(즉시콜 시급을 75%로 — 하차지 모르는 즉시콜 위험 반영) 예약 <b>${ar.calls.length}콜 ${fmt(ar.rev)}원</b> (지금 ${r.calls.length}콜 ${fmt(r.rev)}원)`+
+    if(!was&&(add.length||drop.length)) u+=`<div class="pup">🔁 <b>예약 우선</b>으로 보면(즉시콜 100% · 하루 예상이 즉시콜 흔들림 ±${Math.round(bkInstCV_()*100)}% 안이면 확정 예약 많은 쪽) 예약 <b>${ar.calls.length}콜 ${fmt(ar.rev)}원</b> (지금 ${r.calls.length}콜 ${fmt(r.rev)}원)`+
       `${add.length?`<br>+ ${add.slice(0,5).map(li).join(' · ')}${add.length>5?` 외 ${add.length-5}`:''}`:''}${drop.length?`<br>− ${drop.map(li).join(' · ')}`:''} <button class="pacc" data-bkrf="1">예약 우선으로 보기</button></div>`;
-    else if(was) u+=`<div class="pup go">🔁 <b>예약 우선 모드</b> — 즉시콜 시급을 75%로 보고 예약 연결을 이어 붙였습니다 (보통 모드: ${A.pick.calls.length}콜 ${fmt(A.pick.rev)}원) <button class="pacc" data-bkrf="0">보통 모드로</button></div>`; } } }catch(e){}
+    else if(was) u+=`<div class="pup go">🔁 <b>예약 우선 모드</b> — 즉시콜도 100%로 계산하고, 하루 예상 차이가 즉시콜 흔들림(±${Math.round(bkInstCV_()*100)}%) 안이면 확정 예약이 많은 쪽을 골랐습니다 (보통 모드: ${A.pick.calls.length}콜 ${fmt(A.pick.rev)}원) <button class="pacc" data-bkrf="0">보통 모드로</button></div>`; } } }catch(e){}
  if(r.fillOf){ const fl=r.calls.filter(c=>c._fill); u+=`<div class="pup go">🧩 빈 시간 채움 ${fl.length}콜 추가 (${fl.map(c=>c.t+' '+bkEsc_(c.from)).join(', ')}) — 4만/h 미만이지만 그 시간 즉시콜보다 나아 하루 예상 매출 <b>+${fmt(fc.total-r.fillOf.fc.total)}원</b></div>`; }
  if(BEST.sug&&!BEST.ext) u+=`<div class="pup warn">⏱️ 10시간으로는 예약 ${fmt(BEST.P10.pick.rev)}원 — 40만 미달. <b>${BEST.sug.H}시간으로 늘리면 ${fmt(BEST.sug.rev)}원</b>(+${fmt(BEST.sug.d)})${BEST.sug.ok?' · 40만 달성':''} <button data-sugext="${BEST.sug.H}" data-sugday="${C.day}" class="acc">${BEST.sug.H}시간으로 보기</button></div>`;
  if(BEST.ext) u+=`<div class="pup">⏱️ ${planCfg.cap||10}시간으로는 예약 ${fmt(BEST.P10.pick.rev)}원 → <b>${BEST.base.capH}시간으로 늘려 ${fmt(r.rev)}원</b>(+${fmt(r.rev-BEST.P10.pick.rev)}) 선점 플랜입니다</div>`;
@@ -5604,7 +5728,7 @@ function bkExtOptions_(C){
  const k=bkExtKey_(C);
  if(_bkExtC.k===k) return _bkExtC.v;
  const H0=bkBaseCap_(C), lim=new Date(C.day+'T00:00').getTime()+26*3600000, Hmax=Math.max(H0,Math.round((lim-C.anchor)/360000)/10);
- const Hs=[...new Set([H0,H0+2,H0+4,H0+6,Hmax].map(h=>Math.round(Math.min(h,Hmax)*10)/10))].sort((a,b)=>a-b);
+ const Hs=[...new Set([H0,H0+1,H0+2].map(h=>Math.round(Math.min(h,Hmax)*10)/10))].sort((a,b)=>a-b);   // 10.25 JK: 필요할 때 1~2시간 연장
  const out=[]; Hs.forEach((H,i)=>{ const b=bkPlanBase_(C,H), P=bkPlanPick_(pool,b); if(!P||!P.pick) return;
   out.push({H,unl:H===Hmax&&H>H0+6,end:b.winEnd,calls:P.pick.calls,rev:P.pick.rev,total:P.fc?P.fc.total:P.pick.rev,lastDrop:P.pick.calls.length?P.pick.calls[P.pick.calls.length-1]._end:null}); });
  const base=out[0]; out.forEach(o=>{ o.dRev=o.rev-base.rev; o.dTot=o.total-base.total; o.dH=o.H-base.H; o.xRate=o.dH>0?Math.round(o.dTot/o.dH):null;
@@ -6810,7 +6934,7 @@ function allTrips(){
   if(d&&d.length&&typeof tripYMD==='function'&&tripYMD(d[0])===BIZ) continue;
   out.push(...d);
  }
- return out;
+ return typeof bkFixApply_==='function'?bkFixApply_(out):out;
 }
 function bars(el,lab,vals,labels,fmtv){
  const _e=document.getElementById(el), _l=document.getElementById(lab);
