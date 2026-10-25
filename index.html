@@ -3243,8 +3243,8 @@ function bkKpiPen_(conn,K){ if(conn<=K.gapT) return 0; if(conn<K.safe) return (c
 // pTh: T-Finder의 '태울 확률 하한' 방식 — 이보다 낮으면 기다리라고 권하지 않음(조정 가능)
 const BK_GC={beta:0.9,on:1,rideDef:30,pTh:0.2}; let _bkGC={key:null,m:new Map()};
 // 가치표에서 '지금 ms에 G에 있고 H분 남았을 때'의 기대 매출 (그 시각 서울 평균과 함께). 가치표는 1시간 단위로 묶어 계산량을 줄임
-function bkValH_(G,ms,H){ try{ if(!G||G.la==null) return null; H=Math.max(10,Math.min(BK_VC.H,Math.round(H/BK_VC.step)*BK_VC.step));
-  const m=bkMinOfDay_(ms), t0=Math.max(0,Math.round((m+H-BK_VC.H)/60)*60); const R=bkValTable_(t0,bkYmd_(ms)); if(!R||!R.Ws) return null;
+function bkValH_(G,ms,H,M){ try{ if(!G||G.la==null) return null; H=Math.max(10,Math.min(BK_VC.H,Math.round(H/BK_VC.step)*BK_VC.step));
+  const m=bkMinOfDay_(ms), t0=Math.max(0,Math.round((m+H-BK_VC.H)/60)*60); const R=M?bkValTableM_(M,t0,bkYmd_(ms)):bkValTable_(t0,bkYmd_(ms)); if(!R||!R.Ws) return null;
   const k=H/BK_VC.step, W=R.Ws[k]; if(!W) return null; const c=bkVCell_(G.la,G.lo); if(!W.has(c)) return null;
   if(!R.mk) R.mk={}; if(R.mk[k]==null){ let t=0; W.forEach(v=>t+=v); R.mk[k]=t/W.size; }
   return {v:W.get(c),mean:R.mk[k],H}; }catch(e){ return null; } }
@@ -3259,13 +3259,13 @@ function bkResFill_(G,endMs,nextG,nextMs){ const B=nextMs-BK_LEAD*60000; if(!(B>
 //  긴 빈칸: 기존 DP는 서울 평균 시급으로 채운다고 봄 → + β × (V_H(하차지) − 서울 평균 V_H), H = 빈칸 − 다음 예약 선도착·여유 20분
 function bkGapCredit_(G,endMs,next,conn,K){
  if(!BK_GC.on||!K||!G||G.la==null||!next||!(conn>K.gapT)) return 0;
- let key=''; try{ const I=bkPredIdx_(); key=I.key+'|'+I.rows.length+'|'+bkRecCal_(); }catch(e){}
+ let key=''; try{ const I=bkPredIdx_(); key=I.key+'|'+I.rows.length+'|'+bkRecCal_()+'|'+bkRecInstCal_()+'|'+BK_GC.beta; }catch(e){}
  if(_bkGC.key!==key) _bkGC={key,m:new Map()};
  const nG=next._f, short=conn<K.safe, ck=bkVCell_(G.la,G.lo)+'|'+(nG?bkVCell_(nG.la,nG.lo):'-')+'|'+Math.floor(endMs/1800000)+'|'+(short?'S'+Math.round(conn/5):'L'+Math.min(120,Math.round(conn/10)*10))+'|'+K.safe;
  if(_bkGC.m.has(ck)) return _bkGC.m.get(ck);
  let c=0;
  try{ if(short){ const pr=bkResFill_(G,endMs,nG,next._s); if(pr&&pr.pg>0&&pr.fare>0) c=pr.pg*pr.fare; }
-  else { const V=bkValH_(G,endMs,conn-20); if(V) c=BK_GC.beta*(V.v-V.mean); } }catch(e){ c=0; }
+  else { const V=bkValH_(G,endMs,conn-20); if(V) c=BK_GC.beta*(V.v-V.mean)*bkRecInstCal_(); } }catch(e){ c=0; }
  if(!isFinite(c)) c=0; if(_bkGC.m.size>4000) _bkGC.m.clear(); _bkGC.m.set(ck,c); return c;
 }
 // ── DP 최적 체인 ──
@@ -3362,7 +3362,7 @@ function bkMarginals_(r,cfg){
 //  비워 두고 예약·임박콜: pg × 중간 요금 (다음 예약 제약에 맞는 콜만 · 다른 기사 선점 뺀 확률)
 //  즉시콜(안전 창 이상일 때만): 서울 평균 + β×(V_H(이 자리) − 평균)  — 가치표가 이미 '옆 칸으로 옮겨 기다리기'도 포함
 //  옮기기: 가까운 칸(기존 이동시간 15분 안)의 가치가 이 자리보다 10% 넘게 높으면 그곳을 제시
-const bkShrV_=V=>V?V.mean+BK_GC.beta*(V.v-V.mean):0;
+const bkShrV_=V=>V?(V.mean+BK_GC.beta*(V.v-V.mean))*bkRecInstCal_():0;
 function bkGapOpts_(A,fromMs,leave,next,F){
  const free=Math.round((leave-fromMs)/60000), conn=Math.round((next._s-fromMs)/60000), safe=bkImmSafe_(), O=[];
  const rf=bkResFill_(A,fromMs,next._f,next._s), wr=rf&&rf.fare?Math.round(rf.pg*rf.fare):0;
@@ -3411,7 +3411,8 @@ function bkRecResolve_(){ const now=Date.now(); let ch=0, T=null;
   e.out={at:now,worked,filled:inG.length>0,n:inG.length,rev:inG.reduce((s,t)=>s+(+t.fare||0),0),kinds:[...new Set(inG.map(kd))],idle:Math.max(0,Math.round(L.free-ride)),
    accRec:L.cand?T.some(t=>t.bookId===L.cand):null,nextDone:T.some(t=>t.bookId===e.next.id)}; ch++; }
  if(ch){ _bkRecC=null; bkRecSave_(); } return ch; }
-function bkRecStats_(){ const R=bkRecLog.filter(e=>e.out&&e.out.worked), safeOf=e=>e.last.safe||bkImmSafe_();
+function bkRecAll_(){ const HD=bkHistDec_(); if(!HD||!HD.rec.length) return bkRecLog; const ids=new Set(bkRecLog.map(e=>e.id)); return bkRecLog.concat(HD.rec.filter(e=>!ids.has(e.id))); }   // 휴대폰 + 서버(휴대폰을 바꿔도 이어짐)
+function bkRecStats_(){ const R=bkRecAll_().filter(e=>e.out&&e.out.worked), safeOf=e=>e.last.safe||bkImmSafe_();
  const W=R.filter(e=>e.last.pg!=null&&e.last.conn<safeOf(e)), I=R.filter(e=>e.last.iEv!=null&&e.last.conn>=safeOf(e)), Ac=R.filter(e=>e.last.k==='acc');
  const raw=e=>Math.min(1,e.last.pg/(e.last.cal||1));   // 보정 전 확률로 채점 (보정이 보정을 다시 키우지 않게)
  return {n:R.length,
@@ -3420,15 +3421,50 @@ function bkRecStats_(){ const R=bkRecLog.filter(e=>e.out&&e.out.worked), safeOf=
   A:{n:Ac.length,acc:Ac.filter(e=>e.out.accRec).length},
   idle:R.length?Math.round(R.reduce((s,e)=>s+e.out.idle,0)/R.length):0}; }
 // 잡을 확률 보정 배수 = (실제 채운 칸 + 5) / (예측 확률 합 + 5) — 20칸 미만이면 1 (사전값 1에 표본만큼 다가감)
-function bkRecCal_(){ if(_bkRecC&&_bkRecC.n===bkRecLog.length) return _bkRecC.c; let c=1;
- try{ const S=bkRecStats_(); if(S.W.n>=20) c=Math.min(1.5,Math.max(0.5,(S.W.sy+5)/(S.W.sp+5))); }catch(e){}
- _bkRecC={n:bkRecLog.length,c}; return c; }
+function bkRecCal_(){ const nk=bkRecLog.length+'|'+(bkHist?bkHist.built:''); if(_bkRecC&&_bkRecC.n===nk) return _bkRecC.c; let c=1, ic=1;
+ try{ const S=bkRecStats_(); if(S.W.n>=20) c=Math.min(1.5,Math.max(0.5,(S.W.sy+5)/(S.W.sp+5)));
+  if(S.I.n>=20&&S.I.pe>0){ const M=10*S.I.pe/S.I.n; ic=Math.min(1.3,Math.max(0.7,(S.I.ye+M)/(S.I.pe+M))); } }catch(e){}   // 즉시콜 빈칸 기대: 실제/예측 (10칸어치 사전값 1)
+ _bkRecC={n:nk,c,ic}; return c; }
+function bkRecInstCal_(){ bkRecCal_(); return _bkRecC&&_bkRecC.ic||1; }
 function bkRecHtml_(){ try{ const S=bkRecStats_(); if(!S.n) return `<div class="pup">📒 <b>추천 성적</b>: 아직 채점된 빈칸이 없습니다 — 오늘부터 🧠 판단과 실제 결과를 자동 기록합니다 (20칸 쌓이면 '잡을 확률'을 실측으로 보정)</div>`;
-  const m=v=>Math.round(v/1000)/10+'만', c=bkRecCal_();
+  const m=v=>Math.round(v/1000)/10+'만', c=bkRecCal_(), ic=bkRecInstCal_();
   const w=S.W.n?`예약 기다림 ${S.W.n}칸: 예측 ${S.W.sp.toFixed(1)}칸 채움 → 실제 <b>${S.W.sy}칸</b>${S.W.n>=20?` · 보정 ×${c.toFixed(2)} 적용 중`:` · ${20-S.W.n}칸 더 쌓이면 보정`}`:'';
-  const i=S.I.n?`즉시콜 빈칸 ${S.I.n}칸: 예측 ${m(S.I.pe)} → 실제 <b>${m(S.I.ye)}</b> (${Math.round(S.I.ye/Math.max(1,S.I.pe)*100)}%)`:'';
+  const i=S.I.n?`즉시콜 빈칸 ${S.I.n}칸: 예측 ${m(S.I.pe)} → 실제 <b>${m(S.I.ye)}</b> (${Math.round(S.I.ye/Math.max(1,S.I.pe)*100)}%)${S.I.n>=20?` · 보정 ×${ic.toFixed(2)} 적용 중`:''}`:'';
   const a=S.A.n?`수락 권장 ${S.A.n}번 중 <b>${S.A.acc}번</b> 그 콜을 탐`:'';
-  return `<div class="pup">📒 <b>추천 성적</b>(채점 ${S.n}칸 · 빈칸 평균 놀린 시간 ${S.idle}분): ${[w,i,a].filter(Boolean).join(' · ')}</div>`; }catch(e){ return ''; } }
+  return `<div class="pup">📒 <b>추천 성적</b>(채점 ${S.n}칸 · 빈칸 평균 놀린 시간 ${S.idle}분): ${[w,i,a].filter(Boolean).join(' · ')}${bkTuneTxt_()}</div>`; }catch(e){ return ''; } }
+// ══ 🔧 자가 점검(매주): 하루씩 빼고 다시 배워 맞혀 보기(교차검증) → 가치표 믿음 β와 평일/주말 분리를 스스로 정함 ══
+//  우버 Michelangelo의 '예측을 실제 결과와 맞춰 보는 감시' + 정기 재학습과 같은 생각. 휴대폰이 쉬고 있을 때 하루치씩 나눠 계산(화면 멈춤 방지)
+//  β: 칸−서울평균 가치 차이가 실제 매출 차이로 얼마나 나타나나(회귀 기울기). 사전값 0.9(±0.25)와 표본 표준오차로 섞음(베이즈)
+//  평일/주말 분리: 주말·휴일 10일 이상이고, 분리(다른 유형 가중 0.5)한 쪽 상관이 0.02 넘게 높을 때만 켬
+function bkTuneTxt_(){ const T=planCfg&&planCfg.tune; if(!T) return ''; const d=new Date(T.at), md=(d.getMonth()+1)+'/'+d.getDate();
+ return `<br>🔧 자가 점검(${md}, 사건 ${T.n} · ${T.days}일): 가치표 상관 ${T.c1.toFixed(2)} · β ${T.b.toFixed(2)}±${T.se.toFixed(2)} → <b>${T.beta.toFixed(2)}</b> 적용 · 평일/주말 분리 ${T.wo<1?'<b>켬</b>':`아직 (주말·휴일 ${T.we}일${T.c5!=null?` · 분리 상관 ${T.c5.toFixed(2)}`:''})`}`; }
+function bkTuneApply_(){ const T=planCfg&&planCfg.tune; if(!T) return; if(T.beta>0) BK_GC.beta=T.beta; BK_VC.wo=T.wo||1; }
+let _bkTuneRun=false;
+async function bkSelfTune_(force){
+ if(_bkTuneRun) return null; const T0=planCfg.tune; if(!force&&T0&&Date.now()-T0.at<7*86400000) return null;
+ _bkTuneRun=true; const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+ try{ const TR=bkTripsAll_().filter(t=>t&&t.start&&t.end), I=bkPredIdx_(), H=120; if(I.days.length<5) return null;
+  const by={}; TR.forEach(t=>{ (by[bkYmd_(t.start)]=by[bkYmd_(t.start)]||[]).push(t); });
+  const EV=[]; Object.keys(by).forEach(d=>{ const L=by[d].sort((a,b)=>a.start-b.start), sh=t=>!!t.flagShort||(t.end-t.start)<120000;
+   L.forEach(a=>{ if(sh(a)||a.tla==null) return; const t0=a.end, t1=t0+H*60000; if(!L.some(x=>x.start>t1)) return;
+    EV.push({d,la:a.tla,lo:a.tlo,t0,rev:L.filter(x=>x.start>t0&&x.start<t1&&!sh(x)).reduce((s,x)=>s+(+x.fare||0)*Math.min(1,(t1-x.start)/Math.max(1,x.end-x.start)),0)}); }); });
+  const days=[...new Set(EV.map(e=>e.d))].filter(d=>I.days.length>=4).sort(); if(days.length<10||EV.length<60) return null;
+  const run=async wo=>{ const D=[],Y=[],P=[],Yr=[]; const wo0=BK_VC.wo; BK_VC.wo=wo;
+   try{ for(const d of days){ const T1=TR.filter(t=>bkYmd_(t.start)!==d), I1={key:I.key+'-'+d,rows:I.rows.filter(r=>r.d!==d),days:I.days.filter(x=>x!==d),we:I.we};
+     let M=null; try{ M=bkValBuild_(T1,I1,wo<1?(bkIsOffDay_(d)?1:0):null); }catch(e){} 
+     if(M) EV.filter(e=>e.d===d).forEach(e=>{ const V=bkValH_({la:e.la,lo:e.lo},e.t0,H,M); if(V){ D.push(V.v-V.mean); Y.push(e.rev-V.mean); P.push(V.v); Yr.push(e.rev); } });
+     await sleep(30); } }finally{ BK_VC.wo=wo0; }
+   const n=D.length; if(n<40) return null; const mean=a=>a.reduce((s,x)=>s+x,0)/a.length;
+   const mx=mean(D), my=mean(Y); let sxy=0,sxx=0; D.forEach((x,i)=>{ sxy+=(x-mx)*(Y[i]-my); sxx+=(x-mx)**2; }); const b=sxy/sxx; let rs=0; D.forEach((x,i)=>{ rs+=(Y[i]-my-b*(x-mx))**2; });
+   const se=Math.sqrt(rs/(n-2)/sxx), mp=mean(P), mr=mean(Yr); let a1=0,a2=0,a3=0; P.forEach((x,i)=>{ a1+=(x-mp)*(Yr[i]-mr); a2+=(x-mp)**2; a3+=(Yr[i]-mr)**2; });
+   return {n,b,se,c:a1/Math.sqrt(a2*a3)}; };
+  const r1=await run(1); if(!r1) return null;
+  const we=days.filter(d=>bkIsOffDay_(d)).length; let r5=null; if(we>=10) r5=await run(0.5);
+  const pv=1/(0.25*0.25), lv=1/Math.max(1e-6,r1.se*r1.se), beta=Math.min(1.2,Math.max(0.5,(0.9*pv+r1.b*lv)/(pv+lv)));
+  const wo=r5&&r5.c>r1.c+0.02?0.5:1;
+  planCfg.tune={at:Date.now(),n:r1.n,days:days.length,we,c1:r1.c,b:r1.b,se:r1.se,beta,wo,c5:r5?r5.c:null};
+  try{ await Store.set(KEY_PLANCFG,planCfg); }catch(e){} bkTuneApply_(); bkHistReset_(); return planCfg.tune;
+ }catch(e){ return null; } finally{ _bkTuneRun=false; } }
 // ⏳ 수락 순서: 선점 위험 × 요금(시간당 잃을 기대액) 큰 것부터
 function bkAccOrder_(calls){ try{ const L=calls.filter(c=>c.cand&&c.fare>0).map(c=>({c,r:bkGoneRisk_(c,2)})).filter(x=>x.r!=null); if(L.length<2) return '';
   L.sort((a,b)=>b.r*b.c.fare-a.r*a.c.fare); return `<div class="mt">⏳ <b>수락 순서</b>(먼저 사라질 콜부터): ${L.slice(0,6).map((x,i)=>`${i+1}) ${x.c.t} ${bkEsc_(x.c.from)} ${Math.round(x.c.fare/1000)/10}만 · ${Math.round(x.r*100)}%`).join(' · ')}</div>`; }catch(e){ return ''; } }
@@ -3805,11 +3841,13 @@ const KEY_SEENLOG='gongcha:bkseen'; let bkSeenLog=[];
 // ⏳ 선점 위험: 사진에 보인 예약콜이 다음 사진에서 사라지는 속도(시간당) — 픽업까지 남은 시간 × 요금대별, 전체로 수축
 //  사라짐 = 다른 기사 수락(또는 취소). 노출 시간 = 처음 본 때 → 사라진 걸 확인한 때(또는 마지막으로 본 때·픽업 시각)
 let _bkGR=null;
-function bkGoneHaz_(){ const L=bkSeenLog||[], key=L.length+'|'+L.filter(x=>x.goneAt).length; if(_bkGR&&_bkGR.key===key) return _bkGR;
+function bkGoneHaz_(){ const L=bkSeenLog||[], key=L.length+'|'+L.filter(x=>x.goneAt).length+'|'+(bkHist?bkHist.built:''); if(_bkGR&&_bkGR.key===key) return _bkGR;
  const lb=h=>h<3?0:h<12?1:h<48?2:3, fb=f=>f<25000?0:f<40000?1:2, T={}, A={};
  L.forEach(x=>{ if(!x||!x.seen||!x.d||!x.t) return; const pu=new Date(`${x.d}T${x.t}`).getTime(); if(!(pu>x.seen)) return;
   const end=x.goneAt||Math.min(x.last||x.seen,pu), ex=Math.max(0,(end-x.seen)/3600000), l=lb((pu-x.seen)/3600000), k=l+'|'+fb(+x.fare||0);
   for(const [M,kk] of [[T,k],[A,l]]){ const o=M[kk]||(M[kk]={g:0,ex:0}); o.ex+=ex; if(x.goneAt) o.g++; } });
+ try{ const Z=bkHist&&bkHist.hz; if(Z&&Z.A){ const ex=o=>Object.values(o).reduce((s,v)=>s+(Array.isArray(v)?v[1]:v.ex),0);
+   if(ex(Z.A)>ex(A)){ for(const k in A) delete A[k]; for(const k in T) delete T[k]; for(const k in Z.A) A[k]={g:Z.A[k][0],ex:Z.A[k][1]}; for(const k in Z.T) T[k]={g:Z.T[k][0],ex:Z.T[k][1]}; } } }catch(e){}   // ☁️ 드라이브 전체가 더 많이 보았으면 그 표로
  const haz=(leadH,fare)=>{ const l=lb(leadH), a=A[l], t=T[l+'|'+fb(fare||0)]; if(!a||a.ex<20) return null; const base=a.g/a.ex; return t?(t.g+20*base)/(t.ex+20):base; };
  _bkGR={key,haz}; return _bkGR; }
 // 다음 h시간 안에 사라질 확률
@@ -4228,17 +4266,20 @@ function bkLinkIdx_(){
 const BK_PR={a:0.65,b:0.14,r:2.0,k:2,minDay:100,take:{0:0.3,3:0.53,6:0.38,9:0.41,12:0.38,15:0.28,18:0.33,21:0.19}};
 let _bkPrI=null;
 function bkPredIdx_(){
- const L=(typeof bkSeenLog!=='undefined'&&bkSeenLog)||[], key=L.length+'|'+(L.length?L[L.length-1].k:'');
+ const L=(typeof bkSeenLog!=='undefined'&&bkSeenLog)||[], HD=bkHistDec_(), key=L.length+'|'+(L.length?L[L.length-1].k:'')+(HD?'|h'+HD.b:'');
  if(_bkPrI&&_bkPrI.key===key) return _bkPrI;
- const gc={}, cnt={}, rows=[];
+ const gc={}, cnt={}, rows=[], sc=HD?HD.cnt:{};
  const geo=(name,pk)=>{ const P=(typeof bkPlaces!=='undefined'&&bkPlaces&&pk)?bkPlaces[pk]:null; if(P&&P.la!=null) return {la:P.la,lo:P.lo,g:P.gu||'',n:P.dong||''};
    if(gc[name]!==undefined) return gc[name]; let g=null; try{ const x=bkGeo_(name); g=x&&x.alts?x.alts[0]:x; }catch(e){} gc[name]=g&&g.la!=null?{la:g.la,lo:g.lo,g:g.g||'',n:g.n||''}:null; return gc[name]; };
  L.forEach(x=>{ if(!x||!x.d||!x.t) return; cnt[x.d]=(cnt[x.d]||0)+1; });
- L.forEach(x=>{ if(!x||!x.d||!x.t||(cnt[x.d]||0)<BK_PR.minDay) return; const g=geo(x.from,x.fk); if(!g) return;
+ L.forEach(x=>{ if(!x||!x.d||!x.t||Math.max(cnt[x.d]||0,sc[x.d]||0)<BK_PR.minDay) return; const g=geo(x.from,x.fk); if(!g) return;
    const m=(+x.t.slice(0,2))*60+(+x.t.slice(3,5)), pu=new Date(`${x.d}T${x.t}`).getTime();
    const gt=geo(x.to,x.tk); rows.push({d:x.d,m,la:g.la,lo:g.lo,g:g.g,n:g.n,fare:+x.fare||0,imm:x.seen?(pu-x.seen)<=3600000:false,tla:gt?gt.la:null,tlo:gt?gt.lo:null,ride:+x.ride||0,pk:+x.peak||0}); });
- const days=Object.keys(cnt).filter(d=>cnt[d]>=BK_PR.minDay).sort(), we={}; days.forEach(d=>we[d]=bkIsOffDay_(d));
- _bkPrI={key,rows,days,we}; return _bkPrI;
+ // ☁️ 서버 장기 기억: 휴대폰에 없는(오래되어 지운) 사진 콜을 더함 — 같은 콜은 날짜·시각·요금·출발 위치(약 500m)로 걸러 한 번만
+ let nSrv=0; if(HD&&HD.calls.length){ const kf=x=>x.d+'|'+x.m+'|'+(x.fare||0)+'|'+Math.round(x.la*200)+','+Math.round(x.lo*200), have=new Set(rows.map(kf));
+  HD.calls.forEach(x=>{ if(Math.max(cnt[x.d]||0,sc[x.d]||0)<BK_PR.minDay||have.has(kf(x))) return; have.add(kf(x)); rows.push({...x,srv:1}); nSrv++; }); }
+ const days=[...new Set(Object.keys(cnt).concat(Object.keys(sc)))].filter(d=>Math.max(cnt[d]||0,sc[d]||0)>=BK_PR.minDay&&rows.some(r=>r.d===d)).sort(), we={}; days.forEach(d=>we[d]=bkIsOffDay_(d));
+ _bkPrI={key,rows,days,we,nSrv}; return _bkPrI;
 }
 // G 위치 반경 r km에서 [A,B] 사이 픽업하는 예약콜: λ(하루 기대 건수), 올라올 확률 p, 잡을 확률 pg(다른 기사 선점 제외), 임박콜 몫
 function bkPredict_(G,A,B,opt){
@@ -4277,7 +4318,8 @@ function bkInstProb_(ms,g){
 const bkNormAddr_=s=>String(s||'').replace(/[\s\-·,()]/g,'').replace(/^(서울|경기|인천)(특별시|광역시|도)?/,'');
 let _bkRec=null;
 function bkRecurIdx_(){
- const L=(typeof bkSeenLog!=='undefined'&&bkSeenLog)||[], key=L.length+'|'+(L.length?L[L.length-1].k:''); if(_bkRec&&_bkRec.key===key) return _bkRec;
+ const L0=(typeof bkSeenLog!=='undefined'&&bkSeenLog)||[], HD=bkHistDec_(), key=L0.length+'|'+(L0.length?L0[L0.length-1].k:'')+'|'+(HD?HD.b:''); if(_bkRec&&_bkRec.key===key) return _bkRec;
+ let L=L0; if(HD&&HD.ha.length){ const kf=x=>x.d+'|'+x.t+'|'+bkNormAddr_(x.fromAddr), have=new Set(L0.filter(x=>x&&x.fromAddr).map(kf)); L=L0.concat(HD.ha.filter(x=>!have.has(kf(x)))); }   // ☁️ 드라이브 전체의 상세 주소 콜
  const G={}; L.forEach(x=>{ if(!x||!x.fromAddr||!x.d||!x.t) return; const td=String(x.to||'').split(' ').pop(); const k=bkNormAddr_(x.fromAddr)+'|'+td; (G[k]=G[k]||[]).push(x); });
  const pats=[]; for(const k in G){ const A=G[k], byD={}; A.forEach(x=>{ if(!byD[x.d]) byD[x.d]=x; }); const ds=Object.keys(byD).sort(); if(ds.length<2) continue;
   const ms=ds.map(d=>{ const t=byD[d].t; return (+t.slice(0,2))*60+(+t.slice(3,5)); }); if(Math.max(...ms)-Math.min(...ms)>40) continue;
@@ -4312,17 +4354,28 @@ function bkPredTxt_(P,short){ if(!P) return '';
 //   · 이동시간(픽업·칸 사이·추천 장소까지): 기존 bkTravelT_ 그대로 (TMAP 시각예측 → 내 같은 길 기록 → 시간대 모델 × 내 운행으로 배운 보정 → 평일 출근길 하한)
 //  검증(10.25, 28일·하차 251번, 하루씩 빼고 그날 예측, 예약·임박 매출 포함): 실제 2시간 매출과 상관 0.221
 //   (시간대 평균 0.08 · 지역 평균 0.13 · 즉시콜만 0.200 · +예약 0.214 · +배수 0.221), 모델 상위 1/3 자리 52,279원 vs 하위 1/3 41,986원
-const BK_VC={la0:37.40,lo0:126.70,dla:0.018,dlo:0.0225,step:10,H:120,ns:24,nr:16,q:1.0,pg:1.0};
+const BK_VC={wo:1,la0:37.40,lo0:126.70,dla:0.018,dlo:0.0225,step:10,H:120,ns:24,nr:16,q:1.0,pg:1.0};
 const BK_VREG={'강남구':'강남','서초구':'서초','송파구':'송파','중구':'도심','종로구':'도심','용산구':'도심','영등포구':'서남','마포구':'서북','성동구':'동북','광진구':'동북'};
 const bkVCell_=(la,lo)=>Math.floor((la-BK_VC.la0)/BK_VC.dla)*1000+Math.floor((lo-BK_VC.lo0)/BK_VC.dlo);
 const bkVCen_=k=>({la:BK_VC.la0+(Math.floor(k/1000)+.5)*BK_VC.dla,lo:BK_VC.lo0+((k%1000)+.5)*BK_VC.dlo});
 const bkVBand_=h=>h<5?0:h<9?1:h<13?2:h<17?3:h<21?4:5;
 let _bkVM=null;
-function bkValModel_(){
- const ck=(typeof trips!=='undefined'&&trips?trips.length:0)+'|'+(typeof bkSeenLog!=='undefined'&&bkSeenLog?bkSeenLog.length:0)+'|'+(typeof history!=='undefined'&&history&&history.length||0);
+// 평일/주말 분리: 그 날 유형(dt: 0 평일 · 1 주말·공휴일)의 기록은 가중치 1, 다른 유형은 BK_VC.wo (1이면 분리 안 함)
+// 내 운행 전체 = 휴대폰 기록 + 서버 장기 기억(휴대폰에 없는 날만, 시작 시각 1분 안이면 같은 운행)
+function bkTripsAll_(){ const T=(typeof allTrips==='function'?allTrips():[])||[], HD=bkHistDec_(); if(!HD||!HD.trips.length) return T;
+ const have=new Set(T.map(t=>t&&t.start?Math.round(t.start/60000):0)), out=T.slice();
+ HD.trips.forEach(t=>{ const k=Math.round(t.start/60000); if(have.has(k)||have.has(k-1)||have.has(k+1)) return; have.add(k); out.push(t); }); return out; }
+function bkValModel_(dt){
+ if(dt!=null&&BK_VC.wo<1){ const G0=bkValModel_(); if(!G0||!_bkVM) return G0; const c=_bkVM.d||(_bkVM.d={}), e=c[dt];
+  if(e&&e.key===_bkVM.key) return e.m; let m=null; try{ m=bkValBuild_(_bkVM.T0,_bkVM.I,dt); }catch(err){ m=null; } c[dt]={key:_bkVM.key,m:m||G0}; return m||G0; }
+ const ck=(typeof trips!=='undefined'&&trips?trips.length:0)+'|'+(typeof bkSeenLog!=='undefined'&&bkSeenLog?bkSeenLog.length:0)+'|'+(typeof history!=='undefined'&&history&&history.length||0)+'|'+(bkHist?bkHist.built:'');
  if(_bkVM&&_bkVM.ck===ck&&Date.now()-_bkVM.at<120000) return _bkVM.m;   // 데이터가 그대로면 2분 안에는 다시 확인하지 않음(플랜 계산 중 수천 번 불림)
- const T0=(typeof allTrips==='function'?allTrips():[])||[], I=bkPredIdx_(), key=T0.length+'|'+I.key;
+ const T0=bkTripsAll_(), I=bkPredIdx_(), key=T0.length+'|'+I.key;
  if(_bkVM&&_bkVM.key===key){ _bkVM.at=Date.now(); _bkVM.ck=ck; return _bkVM.m; }
+ const M=bkValBuild_(T0,I,null); _bkVM={key,m:M,at:Date.now(),ck,T0,I}; return M;
+}
+function bkValBuild_(T0,I,dt){
+ const wo=dt==null?1:BK_VC.wo, wOf=ms=>dt==null||(bkIsOffDay_(bkYmd_(ms))?1:0)===dt?1:wo, wDay=d=>dt==null||(bkIsOffDay_(d)?1:0)===dt?1:wo;
  const votes=new Map(), names=new Map(), vote=(m,k,v)=>{ if(!v) return; let c=m.get(k); if(!c){ c={}; m.set(k,c); } c[v]=(c[v]||0)+1; };
  const top=c=>{ if(!c) return null; let b=null,n=-1; for(const k in c) if(c[k]>n){ n=c[k]; b=k; } return b; };
  I.rows.forEach(x=>{ const k=bkVCell_(x.la,x.lo); vote(votes,k,BK_VREG[x.g]||'기타'); vote(names,k,x.n); });
@@ -4330,20 +4383,21 @@ function bkValModel_(){
  const short=t=>!!t.flagShort||(t.end-t.start)<120000;
  T.forEach(t=>{ if(t.fla!=null) vote(votes,bkVCell_(t.fla,t.flo),BK_VREG[t.fromGu]||'기타'); if(t.tla!=null) vote(votes,bkVCell_(t.tla,t.tlo),BK_VREG[t.toGu]||'기타'); });
  const reg=k=>top(votes.get(k))||'기타';
- const m=new Map(), out=new Map(), gb=[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]; let nOut=0;
+ const m=new Map(), out=new Map(), outS=new Map(), gb=[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]; let nOut=0;
  for(let i=1;i<T.length;i++){ const a=T[i-1], b=T[i]; if(short(a)||a.tla==null||bkYmd_(a.end)!==bkYmd_(b.start)) continue;
   const gap=(b.start-a.end)/60000; if(gap<0) continue; const k=reg(bkVCell_(a.tla,a.tlo))+'|'+bkVBand_(new Date(a.end).getHours()), e=m.get(k)||[0,0];
   const inst=!(b.kind==='reserved'||b.kind==='imm'||b.bookId)&&!short(b);
-  if(inst&&gap<=90){ e[0]++; e[1]+=Math.max(gap,2); } else e[1]+=Math.min(gap,90); m.set(k,e); }
+  const w=wOf(a.end); if(inst&&gap<=90){ e[0]+=w; e[1]+=w*Math.max(gap,2); } else e[1]+=w*Math.min(gap,90); m.set(k,e); }
  T.forEach(t=>{ if(t.kind==='reserved'||t.kind==='imm'||t.bookId||short(t)||t.fla==null||t.tla==null||!(t.fare>0)) return; const ride=(t.end-t.start)/60000; if(ride<2||ride>180) return;
-  const k=reg(bkVCell_(t.fla,t.flo))+'|'+bkVBand_(new Date(t.start).getHours()); (out.get(k)||out.set(k,[]).get(k)).push([t.fare,ride,bkVCell_(t.tla,t.tlo)]); nOut++; });
- if(nOut<30||I.days.length<3){ _bkVM={key,m:null,at:Date.now(),ck}; return null; }
+  const k=reg(bkVCell_(t.fla,t.flo))+'|'+bkVBand_(new Date(t.start).getHours()), smp=[t.fare,ride,bkVCell_(t.tla,t.tlo)]; (out.get(k)||out.set(k,[]).get(k)).push(smp); nOut++;
+  if(wo<1&&wOf(t.start)===1) (outS.get(k)||outS.set(k,[]).get(k)).push(smp); });
+ if(nOut<30||I.days.length<3) return null;
  m.forEach((e,k)=>{ const b=+k.split('|')[1]; gb[b][0]+=e[0]; gb[b][1]+=e[1]; });
  const G=gb.reduce((s,x)=>s+x[0],0)/Math.max(1,gb.reduce((s,x)=>s+x[1],0));
  const muRB=(r,b)=>{ const g=gb[b], mb=g[1]?(g[0]+3*G)/(g[1]+3):G, e=m.get(r+'|'+b)||[0,0]; return (e[0]+3*mb*15)/(e[1]+45); };
  // 사진 예약콜(=실제 운행): 칸·시 밀도, 예약 운행 표본(요금·운행시간·도착 칸), 배수
- const pd=new Map(), rout=new Map(), pkm=new Map(), nd=Math.max(1,I.days.length); let pS=0,pN=0;
- I.rows.forEach(x=>{ const h=Math.floor(x.m/60), c=bkVCell_(x.la,x.lo), k=c*100+h; pd.set(k,(pd.get(k)||0)+1);
+ const pd=new Map(), rout=new Map(), pkm=new Map(), nd=Math.max(1e-9,I.days.reduce((s,d)=>s+wDay(d),0)); let pS=0,pN=0;
+ I.rows.forEach(x=>{ const h=Math.floor(x.m/60), c=bkVCell_(x.la,x.lo), k=c*100+h; pd.set(k,(pd.get(k)||0)+wDay(x.d));
   if(x.fare>0&&x.ride>0&&x.tla!=null) (rout.get(k)||rout.set(k,[]).get(k)).push([x.fare,x.ride,bkVCell_(x.tla,x.tlo)]);
   if(x.pk>0){ (pkm.get(k)||pkm.set(k,[]).get(k)).push(x.pk); pS+=x.pk; pN++; } });
  const pAvg=pN?pS/pN:1.5;
@@ -4355,20 +4409,21 @@ function bkValModel_(){
  const take=h=>(BK_PR.take[Math.floor(h/3)*3]!=null?BK_PR.take[Math.floor(h/3)*3]:0.37);
  const muR=(c,h)=>dens(c,h)/60*(1-take(h))*BK_VC.q;
  const all=[].concat(...out.values()), sc=new Map();
- const sInst=(c,h)=>{ const r=reg(c), b=bkVBand_(h), sk=r+'|'+b; if(sc.has(sk)) return sc.get(sk); let L=out.get(sk)||[];
+ const sInst=(c,h)=>{ const r=reg(c), b=bkVBand_(h), sk=r+'|'+b; if(sc.has(sk)) return sc.get(sk); let L=(outS.get(sk)||[]).length>=8?outS.get(sk):(out.get(sk)||[]);
   if(L.length<8){ L=L.concat(...[...out.entries()].filter(([k])=>+k.split('|')[1]===b).map(([,v])=>v)); } if(L.length<8) L=all;
   const S=[], n=Math.min(BK_VC.ns,L.length); for(let i=0;i<n;i++) S.push(L[Math.floor(i*L.length/n)]); sc.set(sk,S); return S; };
  const sRes=(c,h)=>{ const L=[].concat(rout.get(c*100+h-1)||[],rout.get(c*100+h)||[],rout.get(c*100+h+1)||[]); if(!L.length) return L; const S=[], n=Math.min(BK_VC.nr,L.length); for(let i=0;i<n;i++) S.push(L[Math.floor(i*L.length/n)]); return S; };
  const cs=new Set(); I.rows.forEach(x=>cs.add(bkVCell_(x.la,x.lo))); T.forEach(t=>{ if(t.tla!=null) cs.add(bkVCell_(t.tla,t.tlo)); });
  const cells=[...cs].filter(k=>{ const p=bkVCen_(k); return p.la>37.42&&p.la<37.72&&p.lo>126.76&&p.lo<127.22; });
- const M={muI,muR,sInst,sRes,cells,cellSet:new Set(cells),reg,names,top,G,vc:new Map(),tv:new Map()}; _bkVM={key,m:M,at:Date.now(),ck}; return M;
+ return {muI,muR,sInst,sRes,cells,cellSet:new Set(cells),reg,names,top,G,vc:new Map(),tv:new Map(),dt};
 }
 // 이동시간 = 기존 bkTravelT_ (그날·그 시각): 칸 안 손님까지(약 1.3km) · 이웃 칸 중심까지
 function bkVTrav_(M,a,b,day,h){ const k=a+'|'+b+'|'+day+'|'+h; let v=M.tv.get(k); if(v!=null) return v;
  const A=bkVCen_(a), B=b==null?{la:A.la+0.009,lo:A.lo+0.0057}:bkVCen_(b), ms=new Date(`${day}T${String(h).padStart(2,'0')}:30:00`).getTime();
  try{ v=bkTravelT_(A,B,ms).m; }catch(e){ v=b==null?8:11; } if(!(v>0)) v=b==null?8:11; if(M.tv.size>60000) M.tv.clear(); M.tv.set(k,v); return v; }
 // 그날 t0(하루 중 분)에서 출발해 2시간 동안의 기대 매출 — 칸별 표 (날짜·10분 단위로 캐시)
-function bkValTable_(t0,day){ const M=bkValModel_(); if(!M) return null; day=day||bkDayStr_(0); const tk=Math.floor(t0/BK_VC.step)*BK_VC.step, ck=day+'|'+tk; if(M.vc.has(ck)) return M.vc.get(ck);
+function bkValTable_(t0,day){ day=day||bkDayStr_(0); const M=bkValModel_(bkIsOffDay_(day)?1:0); if(!M) return null; return bkValTableM_(M,t0,day); }
+function bkValTableM_(M,t0,day){ const tk=Math.floor(t0/BK_VC.step)*BK_VC.step, ck=day+'|'+tk; if(M.vc.has(ck)) return M.vc.get(ck);
  const S=BK_VC.step, K=BK_VC.H/S, Ws=[new Map(M.cells.map(c=>[c,0]))];
  for(let k=1;k<=K;k++){ const tau=tk+(K-k)*S, h=Math.floor(tau/60)%24, prev=Ws[k-1], W=new Map();
   for(const c of M.cells){ let mi=M.muI(c,h), mr=M.muR(c,h); const Sr=mr>0?M.sRes(c,h):[]; if(!Sr.length) mr=0;
@@ -4777,11 +4832,31 @@ function bkFuelPlan_(fromG,A,Bnode,Bms,cands){
 //  업계 방식(우버·디디 등): 과거 기록으로 시간대·장소별 수요를 매일 다시 계산 → 예측을 실제와 비교해 점검.
 //  여기서는 표본이 작으므로 단순 집계(평일/주말 × 시 × 동)를 쓰고, 휴대폰 기록이 적으면 드라이브 전체 기록을 씀
 const KEY_MODEL='gongcha:model'; let bkModel=null;
+// ☁️ 서버 v5 장기 기억(사진 콜 90일 · 운행 180일 · 추천 성적 · 선점 속도 · 정기 예약 재료) — 크기가 커서(약 1~2MB) IndexedDB에 보관
+let bkHist=null;
+const IDB={ _db:null, mem:{},
+ open(){ return new Promise(res=>{ try{ if(this._db) return res(this._db); if(typeof indexedDB==='undefined') return res(null); const r=indexedDB.open('gongcha',1);
+   r.onupgradeneeded=()=>{ try{ r.result.createObjectStore('kv'); }catch(e){} }; r.onsuccess=()=>{ this._db=r.result; res(this._db); }; r.onerror=()=>res(null); }catch(e){ res(null); } }); },
+ async get(k){ const db=await this.open(); if(!db) return this.mem[k]??null; return new Promise(res=>{ try{ const q=db.transaction('kv','readonly').objectStore('kv').get(k); q.onsuccess=()=>res(q.result??null); q.onerror=()=>res(this.mem[k]??null); }catch(e){ res(this.mem[k]??null); } }); },
+ async set(k,v){ this.mem[k]=v; const db=await this.open(); if(!db) return; return new Promise(res=>{ try{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k); t.oncomplete=()=>res(); t.onerror=()=>res(); }catch(e){ res(); } }); } };
+function bkHistReset_(){ try{ _bkPrI=null; }catch(e){} try{ _bkVM=null; }catch(e){} try{ _bkRec=null; }catch(e){} try{ _bkGR=null; }catch(e){} try{ _bkRecC=null; _bkHD=null; }catch(e){} try{ _bkPK=null; }catch(e){} }
+function bkModelApply_(model){ if(!model) return false; const {hc,ht,ha,hz,rec,...rest}=model; bkModel=Object.assign({at:Date.now()},rest);
+ if(model.v>=2){ bkHist={built:model.built||String(Date.now()),hc:hc||null,ht:ht||null,ha:ha||null,hz:hz||null,rec:rec||null}; try{ IDB.set('modelh',bkHist); }catch(e){} }
+ try{ Store.set(KEY_MODEL,bkModel); }catch(e){} bkHistReset_(); return true; }
+// 장기 기억 풀기(한 번만): 사진 콜 행 · 운행 · 추천 성적
+let _bkHD=null;
+function bkHistDec_(){ const H=bkHist; if(!H) return null; if(_bkHD&&_bkHD.b===H.built) return _bkHD;
+ const o={b:H.built,calls:[],cnt:{},trips:[],rec:[],ha:[]};
+ try{ const C=H.hc; if(C&&C.R){ o.cnt=C.cnt||{}; C.R.forEach(r=>{ const d=C.D[r[0]]; if(!d||r[2]==null) return; o.calls.push({d,m:r[1],la:r[2],lo:r[3],fare:r[4],imm:!!r[5],tla:r[6],tlo:r[7],ride:r[8],pk:r[9],g:C.G[r[10]]||'',n:C.N[r[11]]||'',seen:r[12]||0,last:r[13]||0,gone:r[14]||0}); }); } }catch(e){}
+ try{ const T=H.ht, Gn=(H.hc&&H.hc.G)||[]; if(T&&T.R) T.R.forEach(r=>o.trips.push({start:r[0],end:r[1],fla:r[2],flo:r[3],tla:r[4],tlo:r[5],fare:r[6],kind:r[7]===2?'imm':r[7]===1?'reserved':'instant',bookId:r[7]===1?'srv':undefined,flagShort:!!r[8],fromGu:Gn[r[9]]||null,toGu:Gn[r[10]]||null,srv:1})); }catch(e){}
+ try{ const R=H.rec; if(R&&R.R) R.R.forEach(r=>o.rec.push({id:r[0],srv:1,last:{k:r[1],pg:r[2],cal:r[3],conn:r[4],safe:r[5],iEv:r[6]},out:{worked:!!r[10],kinds:r[7]?['res']:[],rev:r[8],accRec:r[9]===1?true:r[9]===0?false:null,idle:r[11]||0}})); }catch(e){}
+ try{ (H.ha||[]).forEach(r=>o.ha.push({d:r[0],t:r[1],fromAddr:r[2],to:r[3],fare:r[4],from:r[5],toAddr:r[6]})); }catch(e){}
+ _bkHD=o; return o; }
 async function bkModelFetch_(force){
  try{ if(typeof cloudEnabled!=='function'||!cloudEnabled()) return false;
   if(!force&&bkModel&&bkModel.at&&Date.now()-bkModel.at<6*3600000) return false;
-  const r=await cloudJsonp({action:'model',token:cloud.token||''},15000);
-  if(r&&r.ok&&r.data&&r.data.ok&&r.data.model){ bkModel=Object.assign({at:Date.now()},r.data.model); try{ await Store.set(KEY_MODEL,bkModel); }catch(e){} return true; }
+  const r=await cloudJsonp({action:'model',token:cloud.token||''},45000);   // v5 학습 결과는 1~2MB → 넉넉히
+  if(r&&r.ok&&r.data&&r.data.ok&&r.data.model) return bkModelApply_(r.data.model);
  }catch(e){} return false;
 }
 // 드라이브 학습 결과로 빈칸 예측 (휴대폰 기록보다 날짜가 많을 때)
@@ -8869,7 +8944,9 @@ async function cloudDiagnose(){
  else { const d=r.data||{};
   L.push(`✓ 서버 연결됨 · v${d.version||'?'} · 암호 ${d.tokenOk?'<span style="color:var(--occ)">일치</span>':'<span style="color:var(--vac)">불일치 — 앱 전송 암호를 서버 TOKEN과 똑같이</span>'}`);
   if((+d.version||0)<4) L.push(`<span style="color:var(--amber)">📚 학습 서버(v4)로 바꾸면 매일 새벽 4시에 드라이브 전체 기록으로 예약콜 예측·즉시콜 대기표를 다시 계산해 앱으로 받아옵니다 — gongcha_appsscript_v4.gs로 교체</span>`);
-  else { try{ bkModelFetch_(true).then(ok=>{ if(ok){ try{ renderBook(); }catch(e){} } }); }catch(e){} }
+  else { if((+d.version||0)<5) L.push(`<span style="color:var(--amber)">🧠 서버 v5로 바꾸면 📒 추천 성적·장기 기억(사진 콜 90일·운행 180일)·정기 예약을 드라이브 전체로 학습해 내려받습니다 — gongcha_appsscript_v5.gs로 교체</span>`);
+   else if(d.review&&d.review.v>=5) L.push(`🧠 v5 학습: ${String(d.review.time||'').slice(5,16).replace('T',' ')} · 운행일 ${d.review.days} · 사진 콜 ${d.review.calls} · 채점 ${d.review.rec||0}칸 · 학습 결과 ${d.review.modelKB||'?'}KB${d.review.late&&d.review.late.length?' · ⚠ 미룬 일: '+d.review.late.join(', '):''}`);
+   try{ bkModelFetch_(true).then(ok=>{ if(ok){ try{ renderBook(); }catch(e){} } }); }catch(e){} }
   const kt=s=>{ const x=new Date(s); return isNaN(x)?String(s).slice(5,16):`${x.getMonth()+1}.${String(x.getDate()).padStart(2,'0')} ${String(x.getHours()).padStart(2,'0')}:${String(x.getMinutes()).padStart(2,'0')}`; };
   if(d.last) L.push(`마지막 저장: ${kt(d.last.time)} · ${d.last.file}`); else L.push('서버에 저장 기록 없음');
   if(d.lastError){ const fixed=d.last&&new Date(d.last.time)>new Date(d.lastError.time);
@@ -10450,7 +10527,8 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
   if(pos||airKey) wxForTrip().then(w=>{ if(w){wxLast={ck:'boot',v:w}; ctxDraw();} });
   autoBackup();
   await cloudLoad(); cloudDraw();
-  try{ bkModel=(await Store.get(KEY_MODEL))||null; setTimeout(()=>{ bkModelFetch_().then(ch=>{ if(ch){ try{ renderBook(); }catch(e){} } }); },4000); }catch(e){}   // ☁️ 드라이브 학습 결과 받기(6시간마다)
+  try{ bkTuneApply_(); setTimeout(()=>{ try{ if(!occupied) bkSelfTune_().then(r=>{ if(r) try{ renderPlan_(); }catch(e){} }); }catch(e){} },90000); }catch(e){}   // 🔧 매주 자가 점검(운행 중이 아닐 때)
+  try{ bkModel=(await Store.get(KEY_MODEL))||null; try{ bkHist=(await IDB.get('modelh'))||null; }catch(e){} setTimeout(()=>{ bkModelFetch_().then(ch=>{ if(ch){ try{ renderBook(); }catch(e){} } }); },4000); }catch(e){}   // ☁️ 드라이브 학습 결과 받기(6시간마다)
   cloudFlush();                                  // 앱 켤 때 밀린 전송 시도
   try{ window.addEventListener('online',()=>cloudFlush()); }catch(e){}
  }catch(e){ console.warn('컨텍스트 로드 실패',e.message); }
