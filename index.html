@@ -1138,6 +1138,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
 .pbusy #plan_tl{opacity:.45;transition:opacity .1s}
 .fpr{margin-top:4px;font-size:12px;color:#9AB8FF}.fpr.dim{color:var(--dim)}.pnx{color:#9AB8FF;font-size:11px}
 .pgeo{color:var(--amber);font-size:12px}.pgeo.bad{color:var(--vac);font-weight:600}
+.frec{margin:6px 0;padding:6px 8px;border-left:3px solid #9AB8FF;font-size:12px;color:#9AB8FF}.frec .frow{color:var(--txt);margin-top:2px}.frec .m{color:var(--dim);font-size:11px}
 </style></head><body>
 
 <header><div class="mark">공차</div><div class="st" id="stt">빈차</div><button class="hdrbtn" id="addspot">+ 내 지점</button><button class="hdrbtn" id="wlk" title="화면 켜짐 유지">화면</button><button class="hdrbtn" id="opset">설정</button><div class="clk mono" id="clk">--:--</div></header>
@@ -1901,6 +1902,7 @@ function locate(){
   const n=nearest(pos.la,pos.lo);
   // 서울 지점 12km 이내면 그 지점, 아니면 현재 위치 기반 가상 지점
   cur = n.km>50 ? offGrid(pos.la,pos.lo) : n.g;
+  try{ const ot=occupied&&trips.length?trips[trips.length-1]:null; if(ot&&!ot.end&&ot.fla==null&&Date.now()-ot.start<180000){ ot.from=cur?cur.n:ot.from; ot.fla=pos.la; ot.flo=pos.lo; ot.fromLate=Math.round((Date.now()-ot.start)/1000); try{ saveLive(); }catch(e){} } }catch(e){}   // 10.25: 승차 때 GPS 없던 출발지 보충
   render();
   try{ routeDraw(); }catch(e){}
   try{ drawCall(); }catch(e){}},()=>fallback(),
@@ -3518,6 +3520,7 @@ function bkBatchNote_(rec,existing){
 //  · 수락한 예약은 절대 지우지 않음. 잘못 지워졌더라도 다시 찍히면 새로 들어오고 '다시 보인 콜'로 표시
 function bkBatchEnd_(){
  if(!bkBatch||bkBatch.ended) return bkLastBatch;
+ try{ if(typeof bkCloudPhotoQueue_==='function') bkCloudPhotoQueue_(); }catch(e){}
  const B=bkBatch, gone=new Set(), hide=new Set(), now=Date.now();
  const msOf=x=>new Date(`${x.d}T${x.t}`).getTime();
  const unseen=x=>x.cand&&!x.imm&&!B.seenIds.has(x.id)&&!((x.seen||0)>=B.at)&&!((x.lastSeen||0)>=B.at);
@@ -4124,6 +4127,33 @@ function bkInstProb_(ms,g){
  if(all.length<20) return null; const am=all.reduce((s,x)=>s+x,0)/all.length, L=by[b], mean=(L.reduce((s,x)=>s+x,0)+5*am)/(L.length+5);
  return {p:1-Math.exp(-g/mean),mean:Math.round(mean),n:L.length};
 }
+
+// ══ 🔁 정기 예약 (JK 10.22): 같은 출발 건물·같은 도착 동·비슷한 시각(±40분)이 서로 다른 날 2번 이상 → 다음 같은 유형의 날에 또 올라올 가능성 ══
+//  예: 래미안솔베뉴아파트 → 미사1동 08:20 (10.17·19·20·22). 호텔 수익관리의 '단골·그룹 예약', 우버의 '반복 이동(통근)' 학습과 같은 생각을 주소 단위로
+const bkNormAddr_=s=>String(s||'').replace(/[\s\-·,()]/g,'').replace(/^(서울|경기|인천)(특별시|광역시|도)?/,'');
+let _bkRec=null;
+function bkRecurIdx_(){
+ const L=(typeof bkSeenLog!=='undefined'&&bkSeenLog)||[], key=L.length+'|'+(L.length?L[L.length-1].k:''); if(_bkRec&&_bkRec.key===key) return _bkRec;
+ const G={}; L.forEach(x=>{ if(!x||!x.fromAddr||!x.d||!x.t) return; const td=String(x.to||'').split(' ').pop(); const k=bkNormAddr_(x.fromAddr)+'|'+td; (G[k]=G[k]||[]).push(x); });
+ const pats=[]; for(const k in G){ const A=G[k], byD={}; A.forEach(x=>{ if(!byD[x.d]) byD[x.d]=x; }); const ds=Object.keys(byD).sort(); if(ds.length<2) continue;
+  const ms=ds.map(d=>{ const t=byD[d].t; return (+t.slice(0,2))*60+(+t.slice(3,5)); }); if(Math.max(...ms)-Math.min(...ms)>40) continue;
+  const off=ds.map(d=>bkIsOffDay_(d)), we=off.filter(Boolean).length, wd=ds.length-we, sm=ms.slice().sort((a,b)=>a-b), med=sm[sm.length>>1], x0=byD[ds[ds.length-1]];
+  const fares=ds.map(d=>+byD[d].fare||0).filter(Boolean).sort((a,b)=>a-b);
+  pats.push({k,n:ds.length,ds,wd,we,m:med,lo:Math.min(...ms),hi:Math.max(...ms),from:x0.from,to:x0.to,fromAddr:x0.fromAddr,toAddr:x0.toAddr,fare:fares.length?fares[fares.length>>1]:0}); }
+ pats.sort((a,b)=>b.n-a.n); _bkRec={key,pats}; return _bkRec;
+}
+// 그날 올라올 것으로 보이는 정기 예약 (아직 그날 콜로 안 보인 것만). 평일만 나온 패턴은 평일에, 주말만 나온 건 주말에
+function bkRecurFor_(day){ const I=bkRecurIdx_(), off=bkIsOffDay_(day), out=[];
+ I.pats.forEach(p=>{ if(p.ds.includes(day)) return; if(p.ds[p.ds.length-1]>day&&p.ds[0]>day) return;
+  if(off?p.we===0:p.wd===0) return;
+  const seenToday=(typeof books!=='undefined'?books:[]).some(b=>b.d===day&&b.fromAddr&&bkNormAddr_(b.fromAddr)+'|'+String(b.to||'').split(' ').pop()===p.k);
+  if(seenToday) return; out.push(p); });
+ return out.sort((a,b)=>b.n-a.n||a.m-b.m); }
+function bkRecurHtml_(day){ let L=[]; try{ L=bkRecurFor_(day); }catch(e){} if(!L.length) return '';
+ const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'), nm=x=>String(x||'').replace(/^(서울|경기|인천)\s*/,'');
+ return `<div class="frec">🔁 정기 예약 예상 <b>${L.length}</b>건 — 같은 주소에서 비슷한 시각에 반복된 예약 (사진에 올라오면 먼저 잡기)`+
+  L.slice(0,5).map(p=>`<div class="frow">${hm(p.m)}${p.hi-p.lo>=10?`±${Math.round((p.hi-p.lo)/2)}분`:''} ${bkEsc_(p.fromAddr).slice(0,22)}(${bkEsc_(nm(p.from))}) → ${bkEsc_(nm(p.to))}${p.fare?` · ${fmt(p.fare)}`:''} <span class="m">${p.n}회: ${p.ds.map(d=>d.slice(5).replace('-','.')).join('·')}</span></div>`).join('')+
+  (L.length>5?`<div class="frow m">… ${L.length-5}건 더</div>`:'')+`</div>`; }
 const bkPct_=p=>Math.round(p*100)+'%';
 function bkPredTxt_(P,short){ if(!P) return '';
  return short?`🔮 이어 탈 ${bkPct_(P.pg)}`:`🔮 예측(사진 ${P.days}일): 반경 ${BK_PR.r}km · 예약콜 올라올 확률 <b>${bkPct_(P.p)}</b> · 잡을 확률 <b>${bkPct_(P.pg)}</b> · 예상 ${P.lam}건${P.imm>=0.1?` (임박콜 ${P.imm})`:''}${P.fare?` · 요금 중앙 ${fmt(P.fare)}`:''}`; }
@@ -5346,7 +5376,7 @@ function bkFillHtml_(){
   const big=R.gaps.filter(g=>g.m>T.gapT);
   const stale=books.filter(b=>b.d===R.C.day&&b.cand&&!b.gone&&!bkFresh_(b)).length;
   let h=`<div class="fday"><div class="fdh"><b>${bkDateLab_(R.C.day)}</b> 확정 ${R.acc.length}건 · 빈칸 ${big.length}곳${stale?` <span class="m" style="font-size:11px;color:var(--amber)">· 오래된 후보 ${stale}건 제외(${+planCfg.freshH||24}시간 넘게 다시 안 찍힘) — 이 날 목록을 찍으면 갱신</span>`:''}</div>`+
-   `<div class="fkp">${kpiLine(R.kA,'확정')}</div>`+(R.kP.n>R.kA.n?`<div class="fkp">→ ${kpiLine(R.kP,'추천 수락 시')}</div>`:'');
+   `<div class="fkp">${kpiLine(R.kA,'확정')}</div>`+(R.kP.n>R.kA.n?`<div class="fkp">→ ${kpiLine(R.kP,'추천 수락 시')}</div>`:'')+bkRecurHtml_(R.C.day);
   R.gaps.forEach(g=>{ if(g.m<=T.gapT&&!g.head&&!g.tail){ h+=`<div class="fgap ok">✓ ${bkHM_(g.A)} → ${bkHM_(g.B)} 바로 연결 (${g.m}분)</div>`; return; }
    const from=g.fromNow?'지금':g.a?`${bkEsc_(R.nm(g.a.to))} 하차`:'출발', to=g.b?`${bkEsc_(R.nm(g.b.from))} 픽업`:'근무 끝';
    h+=`<div class="fgap ${g.recs.length?'fill':g.m>T.cut?'bad':''}"><div class="fgt">⏳ ${bkHM_(g.A)} ${from} → ${bkHM_(g.B)} ${to} · 빈 <b>${g.m}분</b>${g.recs.length?` → 채우면 최대 공차 <b>${g.after}분</b>`:''}</div>`;
@@ -6515,6 +6545,20 @@ async function bkAutoShift_(kind,ts){
  try{ await Store.set(KEY_SHIFT,shifts); }catch(e){} try{ drawShift(); }catch(e){}
 }
 let _bkCloudT=null;
+// ══ ☁️ 드라이브로 보내는 예약콜 기록 보강 (JK 10.22) ══
+//  gone: 다른 기사가 가져가 사진에서 사라진 시각 · imm: 픽업 1시간 안에 처음 보인 콜(임박) · 확정 좌표·구(같은 이름 동 판별 결과) · 위치 검증 결과
+//  → 드라이브에 쌓인 전체 기록으로 '주소 단위' 학습(정기 예약·장소별 예측)을 할 수 있게
+function bkCloudGeo_(x){ const o={gone:x.goneAt||null};
+ try{ const pu=new Date(`${x.d}T${x.t}`).getTime(); o.imm=x.seen&&pu-x.seen<=3600000?1:0;
+  const n=bkNode_({d:x.d,t:x.t,from:x.from,to:x.to,fromAddr:x.fromAddr,toAddr:x.toAddr,fare:x.fare,peak:x.peak});
+  const r5=v=>v==null?null:Math.round(v*1e5)/1e5;
+  if(n._f){ o.fla=r5(n._f.la); o.flo=r5(n._f.lo); o.fgu=n._f.g||null; } if(n._t){ o.tla=r5(n._t.la); o.tlo=r5(n._t.lo); o.tgu=n._t.g||null; }
+  if(n._amb) o.amb=n._amb.how+(n._amb.unsure?'?':''); if(n._geoSus) o.sus=1; }catch(e){}
+ return o; }
+// 사진 묶음이 끝나면 그 날짜도 전송 대기열에 (운행이 없는 날도)
+function bkCloudPhotoQueue_(){ try{ if(typeof cloudEnabled!=='function'||!cloudEnabled()) return; const d=bkYmd_(Date.now()); cloudQueue(d); cloudSave();
+  clearTimeout(_bkCloudT); _bkCloudT=setTimeout(()=>{ cloudFlush().catch(()=>{}); },120000); }catch(e){} }
+
 async function bkDaySave_(){   // 마지막 하차 기준 그날 데이터: 기기 백업 + 클라우드(설정 시) — 하차가 이어지면 2분 몰아서
  try{ const done=trips.filter(t=>t.end&&tripYMD(t)===BIZ); if(!done.length) return; await backupDay(BIZ,done);
   if(typeof cloudEnabled==='function'&&cloudEnabled()){ cloudQueue(BIZ); await cloudSave(); clearTimeout(_bkCloudT); _bkCloudT=setTimeout(()=>{ cloudFlush().catch(()=>{}); },120000); } }catch(e){}
@@ -8433,7 +8477,7 @@ function evtDraw(){
 const KEY_LASTBK='gongcha:lastbackup';
 function ctxSnapshot(){
  return {app:'gongcha', exported:new Date().toISOString(), bizdate:bizDate(),
-   daycontext:dayContext(), events:todayEvents,
+   daycontext:(()=>{ try{ return dayContext(new Date(bizDate()+'T12:00:00')); }catch(e){ return dayContext(); } })(), events:todayEvents,
    weather_last:wxLast?wxLast.v:null,
    trips:trips, odo:odo, obs:obs, airlog:airLog, missedCalls:missedCalls,
    shifts:(typeof shifts!=='undefined'?shifts:[]), rests:rests, fuels:fuels, expense:expense,
@@ -8503,9 +8547,10 @@ async function cloudPayload(date){
  let snap=null;
  try{ snap=await Store.get(KEY_BAK+date); }catch(e){}
  if(!snap){ try{ const arr=await Store.get('gongcha:'+date); if(arr&&arr.length) snap={bizdate:date,trips:arr}; }catch(e){} }
+ if(!snap){ try{ if((bkSeenLog||[]).some(x=>bkYmd_(x.seen)===date)) snap={bizdate:date,trips:[],photoOnly:true}; }catch(e){} }   // 10.22: 운행 없이 사진만 찍은 날도 드라이브에 (예: 10.18 333건 누락)
  if(!snap) return null;
  return JSON.stringify({app:'gongcha',type:'day',driverId:cloud.driverId||'',token:cloud.token||'',
-   bizdate:date, exported:new Date().toISOString(), data:(()=>{ try{ const trk=bkTlCloud_(date); const dr=(bkDrives||[]).filter(x=>bkYmd_(x.t0)===date); const calls=(bkSeenLog||[]).filter(x=>bkYmd_(x.seen)===date).map(x=>({seen:x.seen,last:x.last,d:x.d,t:x.t,fare:x.fare,peak:x.peak||null,from:x.from,to:x.to,fromAddr:x.fromAddr||null,toAddr:x.toAddr||null,fk:x.fk||null,tk:x.tk||null,ride:x.ride,n:x.n,mine:x.mine||null})); return (trk||dr.length||calls.length)?Object.assign({},snap,{trk,drives:dr,calls}):snap; }catch(e){ return snap; } })(),
+   bizdate:date, exported:new Date().toISOString(), data:(()=>{ try{ const trk=bkTlCloud_(date); const dr=(bkDrives||[]).filter(x=>bkYmd_(x.t0)===date); const calls=(bkSeenLog||[]).filter(x=>bkYmd_(x.seen)===date).map(x=>({seen:x.seen,last:x.last,d:x.d,t:x.t,fare:x.fare,peak:x.peak||null,from:x.from,to:x.to,fromAddr:x.fromAddr||null,toAddr:x.toAddr||null,fk:x.fk||null,tk:x.tk||null,ride:x.ride,n:x.n,mine:x.mine||null,...bkCloudGeo_(x)})); return (trk||dr.length||calls.length)?Object.assign({},snap,{trk,drives:dr,calls}):snap; }catch(e){ return snap; } })(),
    tt:(()=>{ try{ return bkTTSamples_(snap.trips||[]); }catch(e){ return []; } })(),
    pk:(()=>{ try{ return bkPkCloud_(date,snap.trips||[]); }catch(e){ return []; } })()});
 }
@@ -8589,6 +8634,7 @@ function allStoredDays(){
    m=/^gongcha:bak:(\d{4}-\d{2}-\d{2})$/.exec(k||''); if(m) set.add(m[1]);
  } }catch(e){}
  try{ (history||[]).forEach(h=>{ if(h&&h.date) set.add(h.date); }); }catch(e){}
+ try{ (bkSeenLog||[]).forEach(x=>{ if(x&&x.seen) set.add(bkYmd_(x.seen)); }); }catch(e){}   // 사진만 찍은 날도
  return [...set].sort();
 }
 // 과거 전체를 클라우드로 올린다 (3일치 누락분 포함)
