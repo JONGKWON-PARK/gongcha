@@ -3253,13 +3253,13 @@ function bkResFill_(G,endMs,nextG,nextMs){ const B=nextMs-BK_LEAD*60000; if(!(B>
  const tc=new Map(), fit=x=>{ if(x.tla==null||!nextG) return true; const ride=x.ride>0?x.ride:BK_GC.rideDef, pu=new Date(new Date(endMs).toDateString()).getTime()+x.m*60000;
    const k=Math.round(x.tla*200)+','+Math.round(x.tlo*200)+'|'+Math.floor((pu+ride*60000)/1800000); let t=tc.get(k); if(t==null){ const d=bkTravelT_({la:x.tla,lo:x.tlo},nextG,pu+ride*60000); t=d?d.m:99; tc.set(k,t); }
    return pu+(ride+t+BK_ERR)*60000<=B; };
- return bkPredict_(G,endMs+10*60000,B-(BK_GC.rideDef/2)*60000,{fit,fast:1}); }
+ const r=bkPredict_(G,endMs+10*60000,B-(BK_GC.rideDef/2)*60000,{fit,fast:1}); if(r){ const c=typeof bkRecCal_==='function'?bkRecCal_():1; r.cal=c; if(c!==1) r.pg=Math.min(0.95,r.pg*c); } return r; }
 // DP 연결 보정(원): 기존 DP가 이미 '서울 즉시콜 시급'으로 계산한 몫과의 차이만 더함 (이중 계산 방지)
 //  짧은 빈칸(즉시콜 금지): 기존 DP는 채움 0으로 봄 → + pg × 중간 요금(제약 맞는 콜만)
 //  긴 빈칸: 기존 DP는 서울 평균 시급으로 채운다고 봄 → + β × (V_H(하차지) − 서울 평균 V_H), H = 빈칸 − 다음 예약 선도착·여유 20분
 function bkGapCredit_(G,endMs,next,conn,K){
  if(!BK_GC.on||!K||!G||G.la==null||!next||!(conn>K.gapT)) return 0;
- let key=''; try{ const I=bkPredIdx_(); key=I.key+'|'+I.rows.length; }catch(e){}
+ let key=''; try{ const I=bkPredIdx_(); key=I.key+'|'+I.rows.length+'|'+bkRecCal_(); }catch(e){}
  if(_bkGC.key!==key) _bkGC={key,m:new Map()};
  const nG=next._f, short=conn<K.safe, ck=bkVCell_(G.la,G.lo)+'|'+(nG?bkVCell_(nG.la,nG.lo):'-')+'|'+Math.floor(endMs/1800000)+'|'+(short?'S'+Math.round(conn/5):'L'+Math.min(120,Math.round(conn/10)*10))+'|'+K.safe;
  if(_bkGC.m.has(ck)) return _bkGC.m.get(ck);
@@ -3366,15 +3366,15 @@ const bkShrV_=V=>V?V.mean+BK_GC.beta*(V.v-V.mean):0;
 function bkGapOpts_(A,fromMs,leave,next,F){
  const free=Math.round((leave-fromMs)/60000), conn=Math.round((next._s-fromMs)/60000), safe=bkImmSafe_(), O=[];
  const rf=bkResFill_(A,fromMs,next._f,next._s), wr=rf&&rf.fare?Math.round(rf.pg*rf.fare):0;
- O.push({k:'wait',ev:wr,p:rf?rf.pg:null,fare:rf?rf.fare:0,days:rf?rf.days:0});
+ O.push({k:'wait',ev:wr,p:rf?rf.pg:null,fare:rf?rf.fare:0,days:rf?rf.days:0,cal:rf?rf.cal:1});
  if(conn>=safe){ const V=bkValH_(A,fromMs,free); if(V) O.push({k:'inst',ev:Math.round(Math.max(wr,bkShrV_(V))),V}); }
  const TVm=bkOppRate_(bkHour_(fromMs),fromMs)/60;   // 빈칸을 넘겨 늘어나는 시간의 기회비용(서울 즉시콜 시급, 분당)
  (F&&F.fits||[]).filter(f=>f.c.fare>0).slice(0,5).forEach(f=>{ const c=f.c, dt=Math.max(0,f.dt||0), over=Math.max(0,dt-free), rem=free-dt; let after=0;   // dt = 이 콜을 넣어 연결 전체에 늘어나는 시간(공차·선도착·운행)
    if(rem>=20){ if(Math.round((next._s-c._end)/60000)>=safe){ const V=bkValH_(c._t,c._end,rem); after=bkShrV_(V); } else { const r2=bkResFill_(c._t,c._end,next._f,next._s); after=r2&&r2.fare?r2.pg*r2.fare:0; } }
    O.push({k:'acc',c,f,ev:Math.round(c.fare-over*TVm+after),after:Math.round(after),over,cost:Math.round(over*TVm)}); });
  O.sort((a,b)=>b.ev-a.ev); return {O,free,conn,safe,rf}; }
-function bkGapThink_(A,fromMs,leave,next,F,floor,isToday){
- try{ if(!A||A.la==null) return ''; const X=bkGapOpts_(A,fromMs,leave,next,F); if(X.free<20) return '';
+function bkGapThink_(A,fromMs,leave,next,F,floor,isToday,ctx){
+ try{ if(!A||A.la==null) return ''; const X=bkGapOpts_(A,fromMs,leave,next,F); if(X.free<20) return ''; bkRecNote_(ctx,A,fromMs,leave,next,X);
   const nm=bkEsc_(bkAreaOf_(A)||A.n||'하차지'), w=X.O.find(o=>o.k==='wait'), b=X.O[0], m=v=>Math.round(v/1000)/10+'만';
   const pT=w&&w.p!=null?`${Math.round(w.p*100)}%`:'모름(사진 3일 미만)', shot=bkHM_(Math.max(Date.now(),fromMs-10*60000));
   const lst=X.O.slice(0,3).map(o=>o.k==='acc'?`수락 ${o.c.t} ${m(o.ev)}${o.after||o.cost?`(요금 ${m(o.c.fare)}${o.after?`+이후 ${m(o.after)}`:''}${o.cost?`−늘어난 ${o.over}분 ${m(o.cost)}`:''})`:''}`:o.k==='wait'?`예약 기다림 ${m(o.ev)}(${pT}×${w.fare?m(w.fare):'요금 기록 없음'})`:`즉시콜 ${m(o.ev)}`).join(' > ');
@@ -3385,6 +3385,50 @@ function bkGapThink_(A,fromMs,leave,next,F,floor,isToday){
   else { t=`${shot}에 사진 한 번, 맞는 예약이 없으면 ⚡ 즉시콜 1건`;
    if(isToday&&fromMs-Date.now()<3*3600e3) try{ const Bs=bkValBest_(A,fromMs,6), here=bkVal_(A,fromMs); const bt=Bs&&Bs[0]; if(bt&&here&&bt.v>here.v*1.1) t+=` — 이 자리(상위 ${here.pct}%)보다 <b>${bkEsc_(bt.nm)}</b>(${bt.km.toFixed(1)}km) 쪽이 ${Math.round((bt.v/here.v-1)*100)}% 높음`; }catch(e){} }
   return `<div class="mt think">🧠 <b>판단</b>: ${t}<br><span style="opacity:.8">비교(이 빈칸 ${X.free}분 기대 매출): ${lst}</span></div>`; }catch(e){ return ''; } }
+// ══ 📒 추천 성적 기록: 🧠 판단(추천) → 수락 → 실제 결과 ══
+//  업계 시스템의 핵심 고리(추천 → 결과 → 다시 맞춤). 빈칸마다 판단을 남기고, 빈칸이 지나면 실제 운행 기록으로 채점
+//  쓰임: ① 짧은 빈칸 '예약·임박콜 잡을 확률'을 실측으로 자동 보정(20칸 쌓이면) ② 즉시콜 기대·수락 권장 성적은 화면에 표시 ③ 드라이브(서버 v5 학습)로 전송
+const KEY_RECLOG='gongcha:reclog', BK_REC_MAX=1500; let bkRecLog=[], _bkRecT=null, _bkRecC=null;
+function bkRecSave_(){ clearTimeout(_bkRecT); _bkRecT=setTimeout(()=>{ try{ Store.set(KEY_RECLOG,bkRecLog); }catch(e){} },1500); }
+function bkRecNote_(ctx,A,fromMs,leave,next,X){
+ try{ if(!ctx||!next||!next.id||!X||!X.O.length||leave<=Date.now()) return;
+  const id=ctx.day+'|'+(ctx.prev||'start')+'>'+next.id; let e=bkRecLog.find(x=>x.id===id);
+  const b=X.O[0], w=X.O.find(o=>o.k==='wait'), ins=X.O.find(o=>o.k==='inst');
+  const snap={at:Date.now(),k:b.k,ev:b.ev,cand:b.k==='acc'?b.c.id:null,candFare:b.k==='acc'?b.c.fare:0,pg:w&&w.p!=null?Math.round(w.p*1000)/1000:null,cal:w&&w.cal||1,wEv:w?w.ev:0,iEv:ins?ins.ev:null,a:fromMs,b:leave,free:X.free,conn:X.conn,safe:X.safe};
+  if(!e){ e={id,d:ctx.day,next:{id:next.id,t:next.t,from:next.from},la:Math.round(A.la*1e4)/1e4,lo:Math.round(A.lo*1e4)/1e4,first:snap,last:snap,n:1};
+   bkRecLog.push(e); if(bkRecLog.length>BK_REC_MAX) bkRecLog=bkRecLog.slice(-BK_REC_MAX); bkRecSave_(); return; }
+  if(e.out) return; const L=e.last;
+  if(L.k!==snap.k||L.cand!==snap.cand||Math.abs(L.ev-snap.ev)>2000||L.a!==snap.a||L.b!==snap.b||snap.at-L.at>30*60000){ e.last=snap; e.n=(e.n||1)+1; bkRecSave_(); }
+ }catch(err){} }
+// 빈칸이 끝나고 10분 지나면 채점: 그 빈칸에 시작한 운행(예약·임박·즉시), 매출, 놀린 시간, 수락 권장 콜을 실제로 탔는지
+function bkRecResolve_(){ const now=Date.now(); let ch=0, T=null;
+ for(const e of bkRecLog){ const L=e.last; if(e.out||!L||L.b>now-10*60000) continue;
+  if(!T) T=(typeof allTrips==='function'?allTrips():[]).filter(t=>t&&t.start&&t.end);
+  const worked=T.some(t=>bkYmd_(t.start)===e.d); if(!worked&&now-L.b<36*3600e3) continue;   // 그날 운행 기록이 아직 없으면 하루 반 기다림
+  const inG=T.filter(t=>t.start>=L.a-5*60000&&t.start<L.b&&t.bookId!==e.next.id);
+  const ride=inG.reduce((s,t)=>s+Math.max(0,(Math.min(t.end,L.b)-t.start)/60000),0);
+  const kd=t=>t.kind==='imm'?'imm':(t.bookId||t.kind==='reserved')?'res':'inst';
+  e.out={at:now,worked,filled:inG.length>0,n:inG.length,rev:inG.reduce((s,t)=>s+(+t.fare||0),0),kinds:[...new Set(inG.map(kd))],idle:Math.max(0,Math.round(L.free-ride)),
+   accRec:L.cand?T.some(t=>t.bookId===L.cand):null,nextDone:T.some(t=>t.bookId===e.next.id)}; ch++; }
+ if(ch){ _bkRecC=null; bkRecSave_(); } return ch; }
+function bkRecStats_(){ const R=bkRecLog.filter(e=>e.out&&e.out.worked), safeOf=e=>e.last.safe||bkImmSafe_();
+ const W=R.filter(e=>e.last.pg!=null&&e.last.conn<safeOf(e)), I=R.filter(e=>e.last.iEv!=null&&e.last.conn>=safeOf(e)), Ac=R.filter(e=>e.last.k==='acc');
+ const raw=e=>Math.min(1,e.last.pg/(e.last.cal||1));   // 보정 전 확률로 채점 (보정이 보정을 다시 키우지 않게)
+ return {n:R.length,
+  W:{n:W.length,sp:W.reduce((s,e)=>s+raw(e),0),sy:W.filter(e=>e.out.kinds.some(k=>k!=='inst')).length},
+  I:{n:I.length,pe:I.reduce((s,e)=>s+e.last.iEv,0),ye:I.reduce((s,e)=>s+e.out.rev,0)},
+  A:{n:Ac.length,acc:Ac.filter(e=>e.out.accRec).length},
+  idle:R.length?Math.round(R.reduce((s,e)=>s+e.out.idle,0)/R.length):0}; }
+// 잡을 확률 보정 배수 = (실제 채운 칸 + 5) / (예측 확률 합 + 5) — 20칸 미만이면 1 (사전값 1에 표본만큼 다가감)
+function bkRecCal_(){ if(_bkRecC&&_bkRecC.n===bkRecLog.length) return _bkRecC.c; let c=1;
+ try{ const S=bkRecStats_(); if(S.W.n>=20) c=Math.min(1.5,Math.max(0.5,(S.W.sy+5)/(S.W.sp+5))); }catch(e){}
+ _bkRecC={n:bkRecLog.length,c}; return c; }
+function bkRecHtml_(){ try{ const S=bkRecStats_(); if(!S.n) return `<div class="pup">📒 <b>추천 성적</b>: 아직 채점된 빈칸이 없습니다 — 오늘부터 🧠 판단과 실제 결과를 자동 기록합니다 (20칸 쌓이면 '잡을 확률'을 실측으로 보정)</div>`;
+  const m=v=>Math.round(v/1000)/10+'만', c=bkRecCal_();
+  const w=S.W.n?`예약 기다림 ${S.W.n}칸: 예측 ${S.W.sp.toFixed(1)}칸 채움 → 실제 <b>${S.W.sy}칸</b>${S.W.n>=20?` · 보정 ×${c.toFixed(2)} 적용 중`:` · ${20-S.W.n}칸 더 쌓이면 보정`}`:'';
+  const i=S.I.n?`즉시콜 빈칸 ${S.I.n}칸: 예측 ${m(S.I.pe)} → 실제 <b>${m(S.I.ye)}</b> (${Math.round(S.I.ye/Math.max(1,S.I.pe)*100)}%)`:'';
+  const a=S.A.n?`수락 권장 ${S.A.n}번 중 <b>${S.A.acc}번</b> 그 콜을 탐`:'';
+  return `<div class="pup">📒 <b>추천 성적</b>(채점 ${S.n}칸 · 빈칸 평균 놀린 시간 ${S.idle}분): ${[w,i,a].filter(Boolean).join(' · ')}</div>`; }catch(e){ return ''; } }
 // ⏳ 수락 순서: 선점 위험 × 요금(시간당 잃을 기대액) 큰 것부터
 function bkAccOrder_(calls){ try{ const L=calls.filter(c=>c.cand&&c.fare>0).map(c=>({c,r:bkGoneRisk_(c,2)})).filter(x=>x.r!=null); if(L.length<2) return '';
   L.sort((a,b)=>b.r*b.c.fare-a.r*a.c.fare); return `<div class="mt">⏳ <b>수락 순서</b>(먼저 사라질 콜부터): ${L.slice(0,6).map((x,i)=>`${i+1}) ${x.c.t} ${bkEsc_(x.c.from)} ${Math.round(x.c.fare/1000)/10}만 · ${Math.round(x.r*100)}%`).join(' · ')}</div>`; }catch(e){ return ''; } }
@@ -5007,6 +5051,7 @@ function bkEarnedToday_(){ try{ return (trips||[]).reduce((s,t)=>s+(t.fare||0),0
 function renderPlan_(){
  const sec=document.getElementById('plan_sec'); if(!sec) return;
  sec.hidden=false;
+ try{ bkRecResolve_(); }catch(e){}   // 📒 지난 빈칸 채점
  try{ bkExpire_(); }catch(e){}   // 픽업이 지난 후보는 화면·계산에서 바로 뺌(등장 기록엔 보관)
  clearTimeout(window._bkFillT); window._bkFillT=setTimeout(()=>{ try{ renderFill_(); }catch(e){} },0);   // 🧩 빈 시간 채우기 · KPI — 플랜을 먼저 그리고 다음 차례에 (버튼이 먹통이 되지 않게 계산을 나눔)
  const off=bkDayOff_(planCfg.day); let C=bkPlanCtx_(off);
@@ -5085,7 +5130,7 @@ function renderPlan_(){
     const ar=bkAreaOf_(A)||A.n, br=bkAreaOf_(c._f)||c.from;
     return `<div class="mt">🔎 <b>이 칸에 넣을 콜</b>: ${bkHM_(pa)}~${bkHM_(pb)} 출발 · 출발지 ${bkEsc_(ar)} 근처(공차 15분 안) · ${bkHM_(leave-5*60000)}까지 ${bkEsc_(br)} 쪽에서 하차 — 임박콜·중간 사진에서 이 조건이면 넣으세요</div>`; })();
   const head=`<div class="gaprow ok"><div>⏳ ${bkHM_(fromMs)}~${bkHM_(leave)} · <b>${free}분 빈 시간</b> — 다음 ${c.t} ${bkEsc_(c.from)}${est?` · 채우면 약 <b>${fmt(est)}원</b>`:''}</div>`+icn(A,c._f)+(gi!=null?airBox(A,fromMs,leave,gi):'')+look+spotTxt(sp)+pkTxt(fromMs);
-  const gd=`data-gapd="${C.day}" data-gapa="${fromMs}" data-gapb="${leave}"`, fh=(gi!=null?bkGapThink_(A,fromMs,leave,c,getFits(gi),floor,C.isToday):'')+(gi!=null?fitsHtml(gi):'');
+  const gd=`data-gapd="${C.day}" data-gapa="${fromMs}" data-gapb="${leave}"`, fh=(gi!=null?bkGapThink_(A,fromMs,leave,c,getFits(gi),floor,C.isToday,{day:C.day,prev:gi>0&&r.calls[gi-1]?r.calls[gi-1].id:'start'}):'')+(gi!=null?fitsHtml(gi):'');
   if(!C.isToday) return head+fh+`<div class="gapact"><button data-gapcam="1" ${gd}>📷 이 시간대 예약콜 더 찍기</button></div>`+
    (Math.round((c._s-fromMs)/60000)<bkImmSafe_()?`<div class="mt" style="color:var(--vac)">⛔ 즉시콜 금지 구간 — 빈 ${Math.round((c._s-fromMs)/60000)}분이 안전 창 ${bkImmSafe_()}분보다 짧음. 임박·예약콜로만 채우세요</div></div>`:`<div class="mt">당일엔 여기서 출발임박콜 사진 판정 · ⚡ 즉시콜(마감 ${bkHM_(until)}) 버튼이 뜹니다</div></div>`);
   const conn=Math.round((c._s-fromMs)/60000), safe=bkImmSafe_();
@@ -5147,6 +5192,7 @@ function renderPlan_(){
  if(C.early) u+=`<div class="pup go">⏱️ ${C.early.b.t} ${bkEsc_(C.early.b.from)} 예약을 예정보다 <b>${C.early.mins}분 일찍</b> 마쳤습니다 — 지금 위치·시각에서 다시 짠 연결입니다. 아래 빈 시간은 임박콜 사진이나 즉시콜로 채우세요</div>`;
  if(recN) u+=`<div class="pup go">✓ 추천 연결 ${r.calls.length}콜 중 <b>${recN}콜</b>이 아직 후보입니다 — 카카오T에서 순서대로 수락한 뒤 <b>수락함</b>을 누르세요`+
    (recN>1?` <button class="pacc all" data-bkaccall="1">추천 ${recN}콜 모두 수락함</button>`:'')+bkAccOrder_(r.calls)+`</div>`;
+ u+=bkRecHtml_();
  if(PK.mode==='floor') u+=`<div class="pup">기준: 예약 연결의 <b>총시간당 ${fmt(floor)}원 이상</b>(베테랑 기준) 조합 중 <b>예약 매출이 가장 큰 것</b>을 선점합니다. 빈 시간은 임박콜(우선)·즉시콜로 채우며, 예상치는 그 시간대 내 즉시콜 시급(기록 ${ST.n}건, 평균 ${fmt(ST.avg)}원/h)으로 계산했습니다</div>`;
  else if(C.acc.some(b=>b._s>=C.startMs)) u+=`<div class="pup warn">⚠️ 수락한 예약을 포함하면 <b>총시간당 ${fmt(floor)}원</b>을 넘는 조합이 없어, 수락 예약은 그대로 두고 빈 시간을 <b>즉시콜보다 나은 예약</b>으로 채워 하루 예상 매출이 가장 큰 조합을 보여드립니다. 더 좋은 예약이 올라오면 바꿔 끼웁니다</div>`;
  else u+=`<div class="pup warn">⚠️ 올린 후보로는 <b>총시간당 ${fmt(floor)}원 이상</b> 되는 예약 연결이 없습니다 — 좋은 콜을 이미 다른 기사가 가져갔을 수 있습니다. 그래서 <b>연결 기여가 그 시간 즉시콜 시급(평균 ${fmt(Math.round(ST.avg*(planCfg.rf?BK_RF:1)))}원/h)보다 높은 예약만</b> 넣어 하루 예상 매출이 가장 큰 조합을 보여드립니다. 예약 사진을 자주 업데이트하세요</div>`;
@@ -8778,7 +8824,8 @@ async function cloudPayload(date){
  return JSON.stringify({app:'gongcha',type:'day',driverId:cloud.driverId||'',token:cloud.token||'',
    bizdate:date, exported:new Date().toISOString(), data:(()=>{ try{ const trk=bkTlCloud_(date); const dr=(bkDrives||[]).filter(x=>bkYmd_(x.t0)===date); const calls=(bkSeenLog||[]).filter(x=>bkYmd_(x.seen)===date).map(x=>({seen:x.seen,last:x.last,d:x.d,t:x.t,fare:x.fare,peak:x.peak||null,from:x.from,to:x.to,fromAddr:x.fromAddr||null,toAddr:x.toAddr||null,fk:x.fk||null,tk:x.tk||null,ride:x.ride,n:x.n,mine:x.mine||null,...bkCloudGeo_(x)})); return (trk||dr.length||calls.length)?Object.assign({},snap,{trk,drives:dr,calls}):snap; }catch(e){ return snap; } })(),
    tt:(()=>{ try{ return bkTTSamples_(snap.trips||[]); }catch(e){ return []; } })(),
-   pk:(()=>{ try{ return bkPkCloud_(date,snap.trips||[]); }catch(e){ return []; } })()});
+   pk:(()=>{ try{ return bkPkCloud_(date,snap.trips||[]); }catch(e){ return []; } })(),
+   rec:(()=>{ try{ return bkRecLog.filter(x=>x.d===date&&x.out); }catch(e){ return []; } })()});   // 📒 추천 성적(서버 v5 학습용)
 }
 async function cloudSendOne(date){
  const body=await cloudPayload(date);
@@ -8879,7 +8926,7 @@ async function exportAllJSON(){
  for(const d of days){ try{ const arr=await Store.get('gongcha:'+d); if(arr&&arr.length) all[d]=arr; }catch(e){} }
  const out={app:'gongcha', schema:3, exported:new Date().toISOString(),
    firstDay:days[0]||null, lastDay:days[days.length-1]||null, dayCount:Object.keys(all).length,
-   days:all, history, tripArchive, expList, books, custs, obs, fuels, shifts, cfg:CFG, bkUpLog, bkOcrLog, bkSeenLog, bkPlaces, planCfg, bkDrives:(()=>{try{return bkDrives;}catch(e){return [];}})()};
+   days:all, history, tripArchive, expList, books, custs, obs, fuels, shifts, cfg:CFG, bkUpLog, bkOcrLog, bkSeenLog, bkPlaces, planCfg, bkRecLog:(()=>{try{return bkRecLog;}catch(e){return [];}})(), bkDrives:(()=>{try{return bkDrives;}catch(e){return [];}})()};
  const ok=await shareOrDownload(JSON.stringify(out), 'gongcha_전체_'+(days[0]||'')+'_'+(days[days.length-1]||bizDate())+'.json', 'application/json');
  const st=document.getElementById('exStat');
  if(st) st.innerHTML = ok ? `전체 ${Object.keys(all).length}일(${days[0]||'-'}~${days[days.length-1]||'-'}) 내보냈습니다.` : '내보내기 실패';
@@ -10323,7 +10370,7 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
  const safe=(fn,nm)=>{try{fn();}catch(e){console.warn('init 건너뜀:',nm,e.message);}};
  safe(initTax,'initTax');
  books=(await Store.get(KEY_BOOK))||[];
- try{ planCfg=Object.assign(planCfg,(await Store.get(KEY_PLANCFG))||{}); bkUpLog=(await Store.get(KEY_BKUP))||[]; bkOcrLog=(await Store.get(KEY_OCRLOG))||[]; bkSeenLog=(await Store.get(KEY_SEENLOG))||[]; bkPlaces=(await Store.get(KEY_PLACES))||{}; }catch(e){}
+ try{ planCfg=Object.assign(planCfg,(await Store.get(KEY_PLANCFG))||{}); bkUpLog=(await Store.get(KEY_BKUP))||[]; bkOcrLog=(await Store.get(KEY_OCRLOG))||[]; bkSeenLog=(await Store.get(KEY_SEENLOG))||[]; try{ bkRecLog=(await Store.get(KEY_RECLOG))||[]; }catch(e){ bkRecLog=[]; } bkPlaces=(await Store.get(KEY_PLACES))||{}; }catch(e){}
  try{ bkPlacesInit_(); }catch(e){}
  try{ bkArchKindFix_(); }catch(e){}   // 지난 운행 보관본의 예약 연결 복구
  custs=(await Store.get(KEY_CUST))||{};
