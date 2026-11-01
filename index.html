@@ -1797,12 +1797,65 @@ const G = [{"n":"공항동","g":"강서구","la":37.5585,"lo":126.8009,"w":[14.6
 const H0=5,H1=23,DETOUR=1.35;
 
 const mem={};
+/* ── 저장소 (11.01 수정) ──
+   문제: 크롬 localStorage는 사이트당 약 5MB(약 524만 자). 사진 콜·장소 학습·운행 보관·날짜별 백업이 쌓여
+   10.27 무렵 한도를 넘었고, 그 뒤로는 저장이 조용히 실패(QuotaExceeded)해 메모리에만 남았다.
+   안드로이드가 백그라운드 탭을 내렸다 다시 열면 마지막으로 '저장에 성공한' 오전 값이 복원돼
+   매출이 30만→10만대·0으로 바뀌고, 열린 채 남은 운행이 다음 '하차'에 붙어 6시간짜리 0원 운행이 됐다.
+   해결: ① 큰 자료(사진 콜·장소·운행 보관·OCR·업로드 기록·모델·날짜별 백업)는 IndexedDB로(한도 수백 MB)
+         ② localStorage가 차면 큰 자료를 옮겨 자리를 만들고 다시 저장, 그래도 안 되면 IndexedDB로 대피
+         ③ 운행일 기록은 IndexedDB에도 이중 보관하고, 읽을 때 더 최근 것을 고른다
+         ④ 이번 실행에서 쓴 값은 오래된 localStorage 값보다 우선(실패 후 옛 값을 읽던 문제)
+         ⑤ 둘 다 실패하면 화면 맨 위에 빨간 경고 */
+const IDB={ _db:null, _p:null, mem:{},
+ open(){ if(this._db) return Promise.resolve(this._db); if(this._p) return this._p;
+  this._p=new Promise(res=>{ try{ if(typeof indexedDB==='undefined'||!indexedDB) return res(null); const r=indexedDB.open('gongcha',1);
+   r.onupgradeneeded=()=>{ try{ r.result.createObjectStore('kv'); }catch(e){} }; r.onsuccess=()=>{ this._db=r.result; res(this._db); }; r.onerror=()=>res(null); r.onblocked=()=>res(null); }catch(e){ res(null); } });
+  return this._p; },
+ async get(k){ const db=await this.open(); if(!db) return this.mem[k]??null; return new Promise(res=>{ try{ const q=db.transaction('kv','readonly').objectStore('kv').get(k); q.onsuccess=()=>res(q.result??(this.mem[k]??null)); q.onerror=()=>res(this.mem[k]??null); }catch(e){ res(this.mem[k]??null); } }); },
+ async put(k,v){ this.mem[k]=v; const db=await this.open(); if(!db) return false; return new Promise(res=>{ try{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k); t.oncomplete=()=>res(true); t.onerror=()=>res(false); t.onabort=()=>res(false); }catch(e){ res(false); } }); },
+ async set(k,v){ await this.put(k,v); } };
+const ST_BIG=/^gongcha:(bkseen|places|archive|bkocrlog|bkup|model|bak:\d{4}-\d{2}-\d{2})$/;   // 큰 자료 → IndexedDB
+const ST_DAY=/^gongcha:\d{4}-\d{2}-\d{2}$/;                                                   // 운행일 기록 → 둘 다
+const stStat={ok:0,lsFail:0,toIdb:0,moved:0,lost:0,last:null};
+const memS={};                                   // 이번 실행에서 저장한 값(문자열) — 저장 실패 때도 최신값 유지
+// 운행일 기록 두 벌 중 더 진행된 것: 마지막 활동 시각 → 끝난 운행 수 → 요금 입력 수
+function stDayScore_(a){ if(!Array.isArray(a)||!a.length) return [-1,0,0]; let t=0,e=0,f=0; for(const x of a){ if(!x) continue; t=Math.max(t,x.start||0,x.end||0); if(x.end) e++; if(x.fare!=null) f++; } return [t,e,f]; }
+function stNewer_(a,b){ const A=stDayScore_(a),B=stDayScore_(b); for(let i=0;i<3;i++){ if(A[i]!==B[i]) return A[i]>B[i]; } return false; }
+function stWarn_(k){ try{ let el=document.getElementById('stwarn'); if(!el){ el=document.createElement('div'); el.id='stwarn';
+   el.style.cssText='position:fixed;left:0;right:0;top:0;z-index:9999;background:#b3261e;color:#fff;padding:8px 12px;font-size:13px;line-height:1.4';
+   (document.body||document.documentElement).appendChild(el); }
+  el.textContent='⚠ 휴대폰 저장 실패('+String(k).replace('gongcha:','')+') — 앱을 닫지 말고 설정 ▸ 전체 내보내기를 눌러 주세요'; }catch(e){} }
+// localStorage에 남아 있는 큰 자료를 IndexedDB로 옮긴다(부팅 때 한 번 + 공간 부족 때)
+async function stFree_(){ let n=0; try{ const ks=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&ST_BIG.test(k)) ks.push(k); }
+  for(const k of ks){ try{ const raw=localStorage.getItem(k); if(raw==null) continue; const v=JSON.parse(raw); if(await IDB.put(k,v)){ localStorage.removeItem(k); n++; } }catch(e){} } }catch(e){}
+ stStat.moved+=n; return n; }
+function stLsChars_(){ let n=0; try{ for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); n+=k.length+(localStorage.getItem(k)||'').length; } }catch(e){} return n; }
 const Store={
  async get(k){try{if(window.storage){const r=await window.storage.get(k);return r?JSON.parse(r.value):null;}}catch(e){}
-  try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){} return mem[k]??null;},
+  const idb=!!(await IDB.open());
+  if(idb&&ST_BIG.test(k)){ const v=await IDB.get(k); if(v!=null) return v; }
+  let ls=null; try{const v=localStorage.getItem(k); ls=v?JSON.parse(v):null;}catch(e){}
+  if(ST_DAY.test(k)){                            // 운행일: localStorage · 이번 실행 값 · IndexedDB 사본 중 가장 진행된 것
+   let best=ls; try{ if(memS[k]!=null){ const m=JSON.parse(memS[k]); if(best==null||stNewer_(m,best)) best=m; } }catch(e){}
+   if(idb) try{ const d=await IDB.get('day:'+k.slice(8)); if(d&&Array.isArray(d.v)&&(best==null||stNewer_(d.v,best))) best=d.v; }catch(e){}
+   return best; }
+  if(memS[k]!=null){ try{ return JSON.parse(memS[k]); }catch(e){} }
+  if(ls!=null){ if(idb&&ST_BIG.test(k)){ try{ if(await IDB.put(k,ls)) localStorage.removeItem(k); }catch(e){} } return ls; }
+  if(idb&&!ST_BIG.test(k)){ const v=await IDB.get('ls:'+k); if(v!=null) return v; }   // localStorage가 꽉 차 IndexedDB로 비켜 둔 값
+  return mem[k]??null;},
  async set(k,v){const s=JSON.stringify(v);
   try{if(window.storage){await window.storage.set(k,s);return;}}catch(e){}
-  try{localStorage.setItem(k,s);return;}catch(e){} mem[k]=v;}};
+  const idb=!!(await IDB.open());
+  if(idb&&ST_BIG.test(k)){ if(await IDB.put(k,v)){ try{ localStorage.removeItem(k); }catch(e){} stStat.ok++; return; } }
+  if(!(idb&&ST_BIG.test(k))) memS[k]=s;
+  let dayOk=false; if(idb&&ST_DAY.test(k)){ try{ dayOk=await IDB.put('day:'+k.slice(8),{at:Date.now(),v:JSON.parse(s)}); }catch(e){} }
+  try{localStorage.setItem(k,s); stStat.ok++; return;}catch(e){ stStat.lsFail++; }
+  try{ await stFree_(); try{ if(typeof bkDtPrune_==='function') bkDtPrune_(7); }catch(e){} localStorage.setItem(k,s); stStat.ok++; return; }catch(e){}
+  // 그래도 안 되면: 옛 값이 새 값을 가리지 않게 지우고 IndexedDB로 대피
+  try{ localStorage.removeItem(k); }catch(e){}
+  const okI=!idb?false:ST_DAY.test(k)?dayOk:await IDB.put('ls:'+k,v);
+  if(okI) stStat.toIdb++; else { stStat.lost++; stStat.last=k; mem[k]=v; stWarn_(k); } }};
 
 let trips=[],occupied=false,cur=null,pos=null,dest=null,pending=null,lastList=[],vetList=[],mineList=[],navTarget=null;
 let apiKey='', mySpots=[], etaCache={}, geoCache={}, liveOn=false, fetching=false;
@@ -4975,11 +5028,7 @@ function bkFuelPlan_(fromG,A,Bnode,Bms,cands){
 const KEY_MODEL='gongcha:model'; let bkModel=null;
 // ☁️ 서버 v5 장기 기억(사진 콜 90일 · 운행 180일 · 추천 성적 · 선점 속도 · 정기 예약 재료) — 크기가 커서(약 1~2MB) IndexedDB에 보관
 let bkHist=null;
-const IDB={ _db:null, mem:{},
- open(){ return new Promise(res=>{ try{ if(this._db) return res(this._db); if(typeof indexedDB==='undefined') return res(null); const r=indexedDB.open('gongcha',1);
-   r.onupgradeneeded=()=>{ try{ r.result.createObjectStore('kv'); }catch(e){} }; r.onsuccess=()=>{ this._db=r.result; res(this._db); }; r.onerror=()=>res(null); }catch(e){ res(null); } }); },
- async get(k){ const db=await this.open(); if(!db) return this.mem[k]??null; return new Promise(res=>{ try{ const q=db.transaction('kv','readonly').objectStore('kv').get(k); q.onsuccess=()=>res(q.result??null); q.onerror=()=>res(this.mem[k]??null); }catch(e){ res(this.mem[k]??null); } }); },
- async set(k,v){ this.mem[k]=v; const db=await this.open(); if(!db) return; return new Promise(res=>{ try{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k); t.oncomplete=()=>res(); t.onerror=()=>res(); }catch(e){ res(); } }); } };
+// IDB(IndexedDB 저장소)는 Store 옆(맨 앞)으로 옮겼다 — 11.01
 function bkHistReset_(){ try{ _bkPrI=null; }catch(e){} try{ _bkS=null; _bkCV=null; }catch(e){} try{ _bkVM=null; }catch(e){} try{ _bkRec=null; }catch(e){} try{ _bkGR=null; }catch(e){} try{ _bkRecC=null; _bkHD=null; }catch(e){} try{ _bkPK=null; }catch(e){} }
 function bkModelApply_(model){ if(!model) return false; const {hc,ht,ha,hz,rec,...rest}=model; bkModel=Object.assign({at:Date.now()},rest);
  if(model.v>=2){ bkHist={built:model.built||String(Date.now()),hc:hc||null,ht:ht||null,ha:ha||null,hz:hz||null,rec:rec||null,fix:model.fix||null}; try{ IDB.set('modelh',bkHist); }catch(e){} }
@@ -9186,6 +9235,7 @@ function cloudDraw(){
    (n?`<span style="color:var(--amber)">미전송 ${n}건</span>`:'미전송 0건')+
    `<br><span style="color:var(--faint)">기기에 운행일 ${stored}일 저장됨 — '과거 전체 전송'으로 한꺼번에 올릴 수 있습니다</span>`+
    (n&&cloud.lastErr?`<br><span style="color:var(--vac)">⚠ ${cloud.lastErr}</span>`:'')+
+   (()=>{ const c=stLsChars_(), pct=Math.round(c/5242880*100); return `<br><span style="color:${pct>=90||stStat.lost?'var(--vac)':'var(--faint)'}">휴대폰 저장소 ${(c/1048576).toFixed(1)}MB/5MB(${pct}%) · 큰 자료는 IndexedDB${stStat.toIdb?` · 대피 저장 ${stStat.toIdb}회`:''}${stStat.lost?` · ⚠ 저장 실패 ${stStat.lost}회(${String(stStat.last).replace('gongcha:','')})`:''}</span>`; })()+
    (cloud.lastVerify?(cloud.lastVerify.state==='ok'?`<br><span style="color:var(--occ)">✓ 드라이브 저장 확인: ${cloud.lastVerify.date} (${String(cloud.lastVerify.at).slice(5,16).replace('T',' ')})</span>`
      :cloud.lastVerify.state==='unknown'?`<br><span style="color:var(--amber)">저장 확인 안 됨 — ${cloud.lastVerify.msg}. 「🔍 연결 진단」을 눌러 보세요</span>`:''):'');
 }
@@ -10484,6 +10534,7 @@ async function togRun(){
   try{ bkAutoShift_('board',nt.start); }catch(e){}
   try{ bkDayTrkMark_(); }catch(e){}
   try{ localStorage.setItem(KEY,JSON.stringify(trips)); }catch(e){}   // 승차 즉시 동기 저장(창 닫혀도 안전)
+  try{ IDB.put('day:'+BIZ,{at:Date.now(),v:JSON.parse(JSON.stringify(trips))}); }catch(e){}   // 11.01: localStorage가 차도 남도록
   liveBackup();                                                       // 백업에도 반영(재방문 복구용)
   try{ if(pos) rrLearn(pos.la,pos.lo, cur?cur.n:null, new Date().getHours()); }catch(e){}
   // 날씨는 건별로 기록한다 (비는 오다 그치므로 하루 단위로는 못 잡는다).
@@ -10585,6 +10636,8 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
  try{ if(navigator.storage&&navigator.storage.persist){
    const p=await navigator.storage.persisted(); if(!p) await navigator.storage.persist();
  } }catch(e){}
+ // 11.01: localStorage(5MB)에 남은 큰 자료를 IndexedDB로 옮겨 오늘 기록이 저장될 자리를 만든다
+ try{ await stFree_(); }catch(e){}
  const c0=await Store.get(KEY_CFG); if(c0&&c0.s&&c0.s.length===3) CFG=c0;
  if(CFG.bd==null) CFG.bd=0;
  // v25 이관: 하루 결산을 00:00~23:59 로 통일한다 (한 번만 수행)
@@ -10644,7 +10697,7 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
  try{ bkTlInit_(); const ta=document.querySelector('[data-tab="anal"]'); if(ta) ta.addEventListener('click',()=>setTimeout(()=>{ try{ renderTimeline_(); }catch(e){} },60)); }catch(e){}
  // 종료되지 않은 창(페이지)이 닫혀도 최신 기록·상태가 남도록 동기 저장 훅
  try{
-  const _flush=()=>{ try{ localStorage.setItem(KEY,JSON.stringify(trips)); }catch(e){} try{ saveLive(); }catch(e){} };
+  const _flush=()=>{ try{ localStorage.setItem(KEY,JSON.stringify(trips)); }catch(e){} try{ IDB.put('day:'+BIZ,{at:Date.now(),v:JSON.parse(JSON.stringify(trips))}); }catch(e){} try{ saveLive(); }catch(e){} };
   window.addEventListener('pagehide',_flush);
   document.addEventListener('visibilitychange',()=>{ if(document.hidden) _flush(); });
  }catch(e){}
