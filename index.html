@@ -292,6 +292,7 @@ body.camlock{overflow:hidden}
 .strip div:last-child{border-right:0}
 .strip .k{font-size:9px;color:var(--dim);letter-spacing:.4px;margin-bottom:3px}
 .strip .v{font-size:16.5px;font-weight:700}
+.donebar{padding:6px 10px;font-size:12px;color:var(--dim);border-bottom:1px solid var(--line);text-align:center}.donebar b{color:var(--txt)}.donebar .dbup{color:var(--occ)}.donebar .dbdn{color:var(--amber)}
 
 section{padding:15px 16px}
 .eyebrow{font-size:10px;letter-spacing:1.4px;color:var(--faint);margin-bottom:9px;
@@ -1458,6 +1459,7 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   <div><div class="k">시간당</div><div class="v" id="s4">-</div></div>
   <div><div class="k">실차시급</div><div class="v" id="s5">-</div></div>
 </div>
+<div class="donebar mono" id="donebar" hidden></div>
 
 <section style="padding-bottom:0">
   <div class="eyebrow"><span>오늘 근무</span><span id="shiftlab" style="letter-spacing:0"></span></div>
@@ -10633,8 +10635,47 @@ function renderExp(rev){
   <div class="e net"><span>순수익 · 시간당 ${span>0.1?fmt(Math.round(net/span)):'-'}원${odo.paid>0.5?' · km당 '+fmt(Math.round(rev/odo.paid))+'원':''}</span><b class="mono">${fmt(net)}</b></div>`;
 }
 
+/* 11.10: 오늘 완료 N건 · 주 평균 · 평소 대비
+   카카오 AI 우선배차 조건 중 '전일 또는 주 평균 운행 완료 건수 ≥ 사업구역 기사 평균'(2025.5 판결문 보도)을 겨냥한 표시.
+   과거 날은 운행 보관본(tripArchive) 기준. 3건 미만인 날은 기록이 덜 된 날로 보고 뺀다. */
+function doneCountStats(arch,todayYMD,todayDone,nowMs,ymdFn){
+ const days={};
+ for(const d of (arch||[])) for(const t of (d||[])){
+  if(!t||!t.start||!t.end) continue;
+  const y=ymdFn(t); if(!y||y>=todayYMD) continue;
+  (days[y]=days[y]||[]).push(t);
+ }
+ const dn=k=>Math.round((Date.parse(todayYMD+'T00:00:00Z')-Date.parse(k+'T00:00:00Z'))/864e5);
+ const ks=Object.keys(days).filter(k=>days[k].length>=3);
+ const wk=ks.filter(k=>dn(k)>=1&&dn(k)<=7), us=ks.filter(k=>dn(k)>=1&&dn(k)<=28);
+ const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+ const cnt=k=>days[k].length;
+ const out={n:(todayDone||[]).length, wk:avg(wk.map(cnt)), wkDays:wk.length, usual:avg(us.map(cnt)), usualDays:us.length, byNow:null, prev:null};
+ const yk=ks.find(k=>dn(k)===1); out.prev=yk?cnt(yk):null;
+ // 평소 '이 시간까지': 오늘 첫 승차부터 지난 시간만큼, 평소 날들도 첫 승차부터 같은 시간 안에 끝낸 건수의 평균
+ if(out.n&&us.length){
+  const first=Math.min(...todayDone.map(t=>t.start)); const el=Math.max(0,nowMs-first);
+  out.byNow=avg(us.map(k=>{ const L=days[k]; const f=Math.min(...L.map(t=>t.start)); return L.filter(t=>t.end<=f+el).length; }));
+ }
+ return out;
+}
+function renderDone(){
+ const el=document.getElementById('donebar'); if(!el) return;
+ const done=(trips||[]).filter(t=>t.end&&tripYMD(t)===(BIZ||bizDate()));
+ const S=doneCountStats(tripArchive,BIZ||bizDate(),done,Date.now(),tripYMD);
+ if(S.usual==null&&!S.n){ el.hidden=true; return; }
+ const f1=x=>x==null?'-':(Math.round(x*10)/10).toString();
+ let cmp='';
+ const base=S.byNow!=null?S.byNow:S.usual;
+ if(base!=null&&S.n){ const d=S.n-base; cmp=` · 평소 대비 <span class="${d>=0?'dbup':'dbdn'}">${d>=0?'+':''}${f1(d)}</span>`+(S.byNow!=null?` <span style="color:var(--faint)">(이 시간까지 평소 ${f1(S.byNow)}건)</span>`:''); }
+ else if(S.usual!=null) cmp=` · 평소 하루 ${f1(S.usual)}건`;
+ el.innerHTML=`오늘 완료 <b>${S.n}</b>건 · 주 평균 ${f1(S.wk)}건`+cmp;
+ el.title=`주 평균 = 최근 7일 근무일 ${S.wkDays}일, 평소 = 최근 28일 근무일 ${S.usualDays}일 (3건 미만인 날 제외)`+(S.prev!=null?` · 어제 ${S.prev}건`:'')+`\n카카오 AI 우선배차 조건: 전일 또는 주 평균 운행 완료 건수가 사업구역 기사 평균 이상`;
+ el.hidden=false;
+}
 /* 기록 */
 function stats(){
+ try{ renderDone(); }catch(e){ console.warn('완료 건수 표시 오류',e); }
  document.getElementById('logsec').hidden=trips.length===0;
  if(!trips.length)return;
  const done=trips.filter(t=>t.end); const WI=workInfo(); const span=WI.hours;
