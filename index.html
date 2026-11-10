@@ -1518,6 +1518,21 @@ svg	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
   </div>
 </section>
 
+<section style="padding-top:0" id="dstsec">
+  <div class="eyebrow"><span>🎯 콜 카드 목적지 판정 · 빌딩·아파트 이름을 말하거나 입력</span></div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <button id="dst_mic" class="pacc" style="font-size:20px;min-width:48px">🎤</button>
+    <input id="dst_q" placeholder="예: 래미안퍼스티지, 롯데월드타워" style="flex:1;min-width:0;padding:10px;border-radius:8px;border:1px solid var(--line,#444);background:transparent;color:inherit">
+    <button id="dst_go" class="pacc">판정</button>
+  </div>
+  <div id="dst_res" style="margin-top:6px;font-size:13px;line-height:1.5"></div>
+</section>
+
+<section style="padding-top:0" id="znsec" hidden>
+  <div class="eyebrow"><span>🧭 지금 갈 곳 · 동 단위 · 내 기록으로 학습</span></div>
+  <div id="znbox"></div>
+</section>
+
 <section style="padding-top:0">
   <div class="eyebrow"><span id="recl">가까운 대안 · 태울 확률 순</span></div>
   <div id="recs"></div>
@@ -2027,7 +2042,7 @@ function render(){
    vd.className='verdict na'; vc.textContent='이 시각 추천 지점 없음';
    vw.innerHTML='반경 안에 심야 등록 지점이 없습니다. 아래 베테랑 목록을 참고하세요.';
   }
-  document.getElementById('recs').innerHTML = recsRender(nl,null);
+  document.getElementById('recs').innerHTML = recsRender(nl,null); setTimeout(()=>{ try{ bkZnDraw_(); }catch(e){} },0);
   document.querySelectorAll('.go[data-i]').forEach(b=>{const x=lastList[+b.dataset.i];
    b.onclick=()=>openNav({n:x.nm,g:x.gu,la:x.la,lo:x.lo,w:null,p:null,f:x.f,vet:x.extra});});
   stats();return;}
@@ -2055,7 +2070,7 @@ function render(){
   }
   // 서울 밖에서도 근처에 쌓인 내 실측 지점이 있으면 대안으로 표시
   const uni=unified(anchor,h,25); lastList=uni;
-  document.getElementById('recs').innerHTML = recsRender(uni,null);
+  document.getElementById('recs').innerHTML = recsRender(uni,null); setTimeout(()=>{ try{ bkZnDraw_(); }catch(e){} },0);
   document.querySelectorAll('.go').forEach(b=>{const x=lastList[+b.dataset.i];
    b.onclick=()=>openNav({n:x.nm,g:x.gu,la:x.la,lo:x.lo,w:null,p:null,f:x.f,vet:x.extra});});
   stats();return;
@@ -3287,11 +3302,18 @@ function bkWaitCost_(w){ return w<=BK_WAIT_FULL?w:w>=BK_WAIT_FREE?0:BK_WAIT_FREE
 //  · 즉시콜 안전 창(SAFE) 미만의 빈 시간은 전부 손실 — 그 사이 즉시콜을 받으면 다음 예약에 늦을 위험(취소 = 3일 예약 정지)
 //  · SAFE 이상이면 즉시콜이 가능하긴 하나 '로또'라 절반만 손실에서 뺌
 //  · 연결 공차(하차 → 다음 승차)가 KPI 목표를 넘는 분만큼 벌점, 끊김(30분↑)이면 추가 벌점 → 같은 매출이면 촘촘히 이어지는 조합을 고름
-function bkImmSafe_(){   // 즉시콜 1건을 받고 다음 예약 픽업에 늦지 않을 최소 빈 시간: 내 즉시콜 운행시간 상위 10% + 복귀 25분 + 선도착
- try{ const m=[]; (typeof allTrips==='function'?allTrips():[]).forEach(t=>{ if(t&&t.end&&!t.bookId&&t.kind!=='reserved'&&t.kind!=='imm'){ const x=(t.end-t.start)/60000; if(x>=3&&x<=180) m.push(x); } });
-  if(m.length>=20){ m.sort((a,b)=>a-b); return Math.round(m[Math.floor(m.length*0.9)]+25+BK_LEAD); } }catch(e){}
- return 90;
+function bkImmSafe_(){   // 즉시콜 1건을 받고 다음 예약 픽업에 늦지 않을 최소 빈 시간 (11.09: 위험 기준)
+ // 늦을 확률 허용치 = 즉시콜 1건 이익(내 즉시콜 요금 중앙값) ÷ 정지 손실(3일 × 하루 매출 40만) ≈ 1.7%
+ // → 내 즉시콜 운행시간 중 그 비율만 넘는 길이(약 상위 1.7%) + 복귀 25분 + 선도착 10분
+ try{ const T=(typeof allTrips==='function'?allTrips():[]), ck=T.length+'|'+(planCfg.dayRev||'');
+  if(_bkSafeC&&_bkSafeC.ck===ck) return _bkSafeC.v;
+  const m=[], f=[]; T.forEach(t=>{ if(t&&t.end&&!t.bookId&&t.kind!=='reserved'&&t.kind!=='imm'){ const x=(t.end-t.start)/60000; if(x>=3&&x<=180){ m.push(x); if(t.fare>0) f.push(+t.fare); } } });
+  if(m.length>=20){ m.sort((a,b)=>a-b); f.sort((a,b)=>a-b); const gain=f.length?f[Math.floor(f.length/2)]:20000, ban=3*Math.max(100000,planCfg.dayRev||400000), q=Math.min(0.995,Math.max(0.9,1-gain/ban));
+   const v=Math.round(m[Math.min(m.length-1,Math.floor(m.length*q))]+25+BK_LEAD); _bkSafeC={ck,v,q,gain,ban}; return v; } }catch(e){}
+ return 110;
 }
+let _bkSafeC=null;
+
 function bkKpiCfg_(){ if(planCfg.kpiMode===0) return null; const T=typeof bkKpiTarget_==='function'?bkKpiTarget_(planCfg.cap||10):{gapT:15,cut:30}; return {gapT:T.gapT,cut:T.cut,safe:bkImmSafe_()}; }
 // 대기 비용 대신 '연결 공차 벌점'(분 단위 시간가치): 목표(15분) 넘는 분 × 0.4 (90분에서 상한) + 끊김(30분↑) 5분
 //  예전 방식은 50분 넘는 빈 시간을 즉시콜로 채운다고 보고 비용 0 → 긴 빈 시간을 만드는 조합도 고름. 이제 긴 빈 시간일수록 손해로 셈
@@ -3453,7 +3475,7 @@ function bkGapThink_(A,fromMs,leave,next,F,floor,isToday,ctx){
 // ══ 📒 추천 성적 기록: 🧠 판단(추천) → 수락 → 실제 결과 ══
 //  업계 시스템의 핵심 고리(추천 → 결과 → 다시 맞춤). 빈칸마다 판단을 남기고, 빈칸이 지나면 실제 운행 기록으로 채점
 //  쓰임: ① 짧은 빈칸 '예약·임박콜 잡을 확률'을 실측으로 자동 보정(20칸 쌓이면) ② 즉시콜 기대·수락 권장 성적은 화면에 표시 ③ 드라이브(서버 v5 학습)로 전송
-const KEY_RECLOG='gongcha:reclog', BK_REC_MAX=1500; let bkRecLog=[], _bkRecT=null, _bkRecC=null;
+const KEY_RECLOG='gongcha:reclog', BK_REC_MAX=Infinity; let bkRecLog=[], _bkRecT=null, _bkRecC=null;
 function bkRecSave_(){ clearTimeout(_bkRecT); _bkRecT=setTimeout(()=>{ try{ Store.set(KEY_RECLOG,bkRecLog); }catch(e){} },1500); }
 function bkRecNote_(ctx,A,fromMs,leave,next,X){
  try{ if(!ctx||!next||!next.id||!X||!X.O.length||leave<=Date.now()) return;
@@ -3988,13 +4010,13 @@ function bkJudge_(c,ctx){
 const KEY_OCRLOG='gongcha:bkocrlog'; let bkOcrLog=[];
 function bkOcrLog_(calls,meta){
  bkOcrLog.push({t:Date.now(),n:(calls||[]).length,calls:(calls||[]).slice(0,30),...(meta||{})});
- if(bkOcrLog.length>400) bkOcrLog=bkOcrLog.slice(-400);
+ // 11.09: 사진 인식 기록 제한 없음
  try{ Store.set(KEY_OCRLOG,bkOcrLog); }catch(e){}
 }
 // ── 예약콜 업로드 시간대 자가학습 ──
 function bkUpLog_(n){
  bkUpLog.push({t:Date.now(),n:n|0});
- if(bkUpLog.length>3000) bkUpLog=bkUpLog.slice(-3000);
+ // 11.09: 업로드 기록 제한 없음
  try{ Store.set(KEY_BKUP,bkUpLog); }catch(e){}
 }
 function bkUpHist_(days){
@@ -4040,7 +4062,7 @@ function bkSeen_(rec,isNew){
  _bkPK=null; return e;
 }
 function bkSeenSave_(){ try{ Store.set(KEY_SEENLOG,bkSeenLog); }catch(e){} try{ bkPlacesSave_(); }catch(e){} }
-const BK_SEEN_MAX=4000;   // 상세 주소까지 담아 약 1.2MB. 오래된 원본은 구글 드라이브(그날 data.calls)에 보관되고, 장소 통계(bkPlaces)는 계속 쌓임
+const BK_SEEN_MAX=Infinity;   // 11.09: 제한 없음(IndexedDB) —    // 11.07: IndexedDB로 옮겨 모든 예약콜(건물·주소·날짜·요일·시각)을 기억 —    // 상세 주소까지 담아 약 1.2MB. 오래된 원본은 구글 드라이브(그날 data.calls)에 보관되고, 장소 통계(bkPlaces)는 계속 쌓임
 
 // ══ 상세 장소: 건물명·도로명 번지·지번까지 (JK 10.17: 동·구·권역보다 정밀하게) ══
 //  사진의 주소 글자 → 건물/장소명 · 도로명+건물번호 · 지번 · 동 호수/출입구 · 구 · 동으로 나눔
@@ -4083,11 +4105,12 @@ function bkPlaceAdd_(e){
  const a=bkPlaceRec_(F), b=bkPlaceRec_(T), hh=+String(e.t||'').slice(0,2);
  // 같은 콜이 글자만 조금 달리 여러 번 찍혀도 한 번만 (장소·날짜·시각이 같으면 같은 콜)
  const ck=e.d+' '+e.t; a.c=a.c||[]; e._pl=1; if(a.c.includes(ck)) return; a.c.push(ck); if(a.c.length>40) a.c.shift();
- a.n++; if(hh>=0&&hh<24) a.h[hh]++; if(bkIsOffDay_(e.d)) a.we++; else a.wd++; a.fs+=+e.fare||0; a.last=e.seen||Date.now();
+ a.n++; if(hh>=0&&hh<24) a.h[hh]++; if(bkIsOffDay_(e.d)) a.we++; else a.wd++; try{ const dw=new Date(e.d+'T12:00').getDay(); if(dw>=0){ a.dw=a.dw||Array(7).fill(0); a.dw[dw]++; } }catch(x){}   // 요일별 a.fs+=+e.fare||0; a.last=e.seen||Date.now();
  const td=T.dong||T.gu||e.to; if(td){ a.to[td]=(a.to[td]||0)+1; const ks=Object.keys(a.to); if(ks.length>10){ const lo=ks.sort((x,y)=>a.to[x]-a.to[y])[0]; delete a.to[lo]; } }
  b.m++; b.last=Math.max(b.last||0,e.seen||0);
  e._pl=1; _bkPlDirty=true;
- const ks=Object.keys(bkPlaces); if(ks.length>3500){ ks.sort((x,y)=>((bkPlaces[x].n+bkPlaces[x].m)-(bkPlaces[y].n+bkPlaces[y].m))||((bkPlaces[x].last||0)-(bkPlaces[y].last||0))).slice(0,ks.length-3000).forEach(k=>delete bkPlaces[k]); }
+ const ks=Object.keys(bkPlaces); if(false&&ks.length>30000){   // 11.09: 장소 학습 제한 없음
+  ks.sort((x,y)=>((bkPlaces[x].n+bkPlaces[x].m)-(bkPlaces[y].n+bkPlaces[y].m))||((bkPlaces[x].last||0)-(bkPlaces[y].last||0))).slice(0,ks.length-25000).forEach(k=>delete bkPlaces[k]); }
 }
 function bkPlacesSave_(){ if(!_bkPlDirty) return; _bkPlDirty=false; try{ Store.set(KEY_PLACES,bkPlaces); }catch(e){} }
 // 처음 켤 때: 예전 등장 기록에 후보·OCR 기록의 상세 주소를 채우고 장소 사전을 만듦
@@ -4692,7 +4715,7 @@ function bkBid_(ms,nowMs){
 }
 // ══════════ 연결 콜 등장 기록 — 수락한 예약 사이 빈 칸에 맞는 콜이 '언제'(몇 시에, 픽업 몇 시간 전) 처음 보였나 ══════════
 const KEY_CONN='gongcha:connlog'; let bkConnLog=null;
-function bkConnLoad_(){ if(bkConnLog) return bkConnLog; try{ bkConnLog=JSON.parse(localStorage.getItem(KEY_CONN)||'[]')||[]; }catch(e){ bkConnLog=[]; } return bkConnLog; }
+function bkConnLoad_(){ if(bkConnLog) return bkConnLog; try{ bkConnLog=JSON.parse(localStorage.getItem(KEY_CONN)||'[]')||[]; }catch(e){ bkConnLog=[]; } try{ IDB.get('all:connlog').then(a=>{ if(Array.isArray(a)&&a.length>bkConnLog.length){ const ids=new Set(bkConnLog.map(x=>x.id)); bkConnLog.unshift(...a.filter(x=>!ids.has(x.id))); } }).catch(()=>{}); }catch(e){} return bkConnLog; }
 function bkConnRecord_(B){
  const L=bkConnLoad_(), now=Date.now(), newIds=new Set(B.newIds||[]); if(!newIds.size) return 0; let n=0;
  for(let off=0;off<BK_DAYS;off++){ const d=bkDayStr_(off); const fresh=books.filter(b=>b.d===d&&newIds.has(b.id)); if(!fresh.length) continue;
@@ -4703,7 +4726,7 @@ function bkConnRecord_(B){
    F.fits.forEach(f=>{ if(L.some(x=>x.id===f.c.id)) return;
     // 맨 앞·맨 뒤 칸은 바로 이어지는 콜만 (첫 예약 90분 전 안에 끝나거나, 마지막 하차 90분 안에 출발)
     if(i===0&&r.calls[0]._s-f.c._end>90*60000) return; if(i===r.calls.length&&f.c._s-r.calls[i-1]._end>90*60000) return; L.push({id:f.c.id,at:now,h:new Date(now).getHours(),d,t:f.c.t,fare:f.c.fare,lead:Math.round((f.c._s-now)/360000)/10,rate:f.rate===Infinity?null:f.rate}); n++; }); } }
- if(n){ if(L.length>2000) L.splice(0,L.length-2000); try{ localStorage.setItem(KEY_CONN,JSON.stringify(L)); }catch(e){} }
+ if(n){ try{ IDB.put('all:connlog',L); }catch(e){} try{ localStorage.setItem(KEY_CONN,JSON.stringify(L.slice(-2000))); }catch(e){} }   // 11.09: 전체는 IndexedDB
  return n;
 }
 function bkConnStats_(days){
@@ -5036,8 +5059,9 @@ function bkModelApply_(model){ if(!model) return false; const {hc,ht,ha,hz,rec,.
 // 장기 기억 풀기(한 번만): 사진 콜 행 · 운행 · 추천 성적
 let _bkHD=null;
 function bkHistDec_(){ const H=bkHist; if(!H) return null; if(_bkHD&&_bkHD.b===H.built) return _bkHD;
- const o={b:H.built,calls:[],cnt:{},trips:[],rec:[],ha:[]};
- try{ const C=H.hc; if(C&&C.R){ o.cnt=C.cnt||{}; C.R.forEach(r=>{ const d=C.D[r[0]]; if(!d||r[2]==null) return; o.calls.push({d,m:r[1],la:r[2],lo:r[3],fare:r[4],imm:!!r[5],tla:r[6],tlo:r[7],ride:r[8],pk:r[9],g:C.G[r[10]]||'',n:C.N[r[11]]||'',seen:r[12]||0,last:r[13]||0,gone:r[14]||0}); }); } }catch(e){}
+ const o={b:H.built,calls:[],callsNG:[],cnt:{},trips:[],rec:[],ha:[]};
+ try{ const C=H.hc; if(C&&C.R){ o.cnt=C.cnt||{}; C.R.forEach(r=>{ const d=C.D[r[0]]; if(!d) return; if(r[2]==null){ o.callsNG.push({d,m:r[1],fare:r[4],g:C.G[r[10]]||'',n:C.N[r[11]]||''}); return; }   // 11.09: 좌표 없는 콜도 동 이름으로 학습
+  o.calls.push({d,m:r[1],la:r[2],lo:r[3],fare:r[4],imm:!!r[5],tla:r[6],tlo:r[7],ride:r[8],pk:r[9],g:C.G[r[10]]||'',n:C.N[r[11]]||'',seen:r[12]||0,last:r[13]||0,gone:r[14]||0}); }); } }catch(e){}
  try{ const T=H.ht, Gn=(H.hc&&H.hc.G)||[]; if(T&&T.R) T.R.forEach(r=>o.trips.push({start:r[0],end:r[1],fla:r[2],flo:r[3],tla:r[4],tlo:r[5],fare:r[6],kind:r[7]===2?'imm':r[7]===1?'reserved':'instant',bookId:r[7]===1?'srv':undefined,flagShort:!!r[8],fromGu:Gn[r[9]]||null,toGu:Gn[r[10]]||null,srv:1})); }catch(e){}
  try{ const R=H.rec; if(R&&R.R) R.R.forEach(r=>o.rec.push({id:r[0],srv:1,last:{k:r[1],pg:r[2],cal:r[3],conn:r[4],safe:r[5],iEv:r[6]},out:{worked:!!r[10],kinds:r[7]?['res']:[],rev:r[8],accRec:r[9]===1?true:r[9]===0?false:null,idle:r[11]||0}})); }catch(e){}
  try{ (H.ha||[]).forEach(r=>o.ha.push({d:r[0],t:r[1],fromAddr:r[2],to:r[3],fare:r[4],from:r[5],toAddr:r[6]})); }catch(e){}
@@ -5049,7 +5073,7 @@ function bkFixApply_(T){ let F=null; try{ const HD=bkHistDec_(); F=HD&&HD.fix; }
   const c={...t,fare:x.fare,from:x.from||t.from,to:x.to||t.to,kind:x.kind,_fixed:1}; if(x.kind==='instant'){ delete c.bookId; } out.push(c); } return out; }
 async function bkModelFetch_(force){
  try{ if(typeof cloudEnabled!=='function'||!cloudEnabled()) return false;
-  if(!force&&bkModel&&bkModel.at&&Date.now()-bkModel.at<6*3600000) return false;
+  if(!force&&bkModel&&bkModel.at&&Date.now()-bkModel.at<55*60000) return false;   // 11.09: 서버 매시간 학습 → 1시간마다 받아옴
   const r=await cloudJsonp({action:'model',token:cloud.token||''},45000);   // v5 학습 결과는 1~2MB → 넉넉히
   if(r&&r.ok&&r.data&&r.data.ok&&r.data.model) return bkModelApply_(r.data.model);
  }catch(e){} return false;
@@ -5670,6 +5694,215 @@ function bkAlertTick_(nowMs){
  if(t){ t.textContent='🔔 '+msg; t.hidden=false; clearTimeout(t._tm); t._tm=setTimeout(()=>{t.hidden=true;},60000); }
  return true;
 }
+
+// ══ 🧭 지금 갈 곳 — 동 단위 학습·추론·추천 (JK 11.07) ══
+//  수요의 흔적 = 예약콜 사진(출발 동·건물·주소·날짜·요일·시각) + 서버 장기 기억의 사진 콜 + 내 즉시콜 승차(동·시각).
+//  JK 자료(9/16~10/26): 즉시콜을 태운 곳과 예약콜이 나오는 곳은 같은 곳 — 구 순위 상관 0.88, 동 순위 상관 0.64.
+//  ① 동마다 '그 요일 종류(평일·토·일) · 그 시각 앞뒤 1시간'의 예약콜·즉시 승차를 하루 평균으로 센다
+//  ② 표본이 적은 동은 같은 구 평균 쪽으로 당긴다(계층 축소) — 동 자료가 쌓일수록 동 자체 값을 믿는다
+//  ③ 구의 즉시콜 시간당 매출(하차→다음 콜 대기 + 운행, 요금)을 내 기록으로 학습하고, 동의 수요 비율로 조정
+//  ④ 이동 시간을 빼고(이동 중에도 콜이 오므로 절반만) 다음 1시간 기대 매출이 큰 동 3곳을 고른다
+//  ⑤ 매시간 정각·하차 직후 다시 계산해 음성·알림으로 알리고, 추천과 실제(다음 즉시콜까지 대기·요금)를 기록해 채점한다
+const BK_ZN={win:60,k:5,kG:12,wIns:3,alpha:0.5,rad:7,spd:20,lo:0.6,hi:1.6,h0:5,h1:23};
+const KEY_ZNLOG='gongcha:znlog'; let bkZnLog=[], _bkZnD=null, _bkZnR=null, _bkZnDone={}, _bkZnLoaded=false;
+const bkZnNm_=s=>String(s||'').replace(/^(서울특별시|서울시|서울|경기도|경기|인천광역시|인천)\s*/,'').replace(/\s+/g,'').trim();
+const BK_DOW_NM={wd:'평일',sat:'토요일',sun:'일요일·공휴일'};
+function bkDowT_(ymd){ try{ const g=new Date(ymd+'T12:00').getDay(); if(g===6) return 'sat'; if(g===0||(typeof holidays==='object'&&holidays&&holidays[ymd])) return 'sun'; return 'wd'; }catch(e){ return 'wd'; } }
+// 행정동 목록 = 서울 격자(G: 동·구·좌표) + 보조 동 목록(BK_DONG: 경기·인천 등)
+function bkZnDongs_(){ if(bkZnDongs_.L) return bkZnDongs_.L; const L=[], seen=new Set();
+ try{ const A={}; G.forEach(g=>{ if(!g.n) return; const k=g.g+'|'+g.n, a=A[k]||(A[k]=[g.n,g.g,0,0,0]); a[2]+=g.la; a[3]+=g.lo; a[4]++; }); Object.keys(A).forEach(k=>{ const a=A[k]; seen.add(k); L.push([a[0],a[1],a[2]/a[4],a[3]/a[4]]); }); }catch(e){}   // 격자점 평균 = 동 중심
+ try{ BK_DONG.forEach(r=>{ const k=r[1]+'|'+r[0]; if(!seen.has(k)){ seen.add(k); L.push([r[0],r[1],r[2],r[3]]); } }); }catch(e){}
+ bkZnDongs_.L=L; return L; }
+function bkZnGuCnt_(){ if(bkZnGuCnt_.m) return bkZnGuCnt_.m; const m={}; bkZnDongs_().forEach(r=>{ m[r[1]]=(m[r[1]]||0)+1; }); bkZnGuCnt_.m=m; return m; }
+// 동 이름 통일: 법정동(역삼동)·행정동(역삼1동)이 섞이므로 좌표가 있으면 가장 가까운 행정동, 없으면 이름으로 찾은 뒤 가까운 행정동
+const _bkZnAdmM=new Map();
+function bkZnAdm_(name,la,lo){ const nm=bkZnNm_(name); let x=la, y=lo; const ck=la!=null&&lo!=null?(+la).toFixed(3)+','+(+lo).toFixed(3):null; if(ck&&_bkZnAdmM.has(ck)) return _bkZnAdmM.get(ck);
+ if(x==null||y==null){ if(_bkZnAdmM.has(nm)) return _bkZnAdmM.get(nm); try{ const DL=bkZnDongs_(); if(DL.some(r=>r[0]===nm)){ const r=DL.find(r=>r[0]===nm); const o={dong:r[0],gu:r[1],la:r[2],lo:r[3]}; _bkZnAdmM.set(nm,o); return o; } }catch(e){}
+  const g=bkZnGeo_(nm); if(!g){ _bkZnAdmM.set(nm,null); return null; } x=g.la; y=g.lo; }
+ let b=null, bd=1e9; try{ bkZnDongs_().forEach(r=>{ const d=dist(x,y,r[2],r[3]); if(d<bd){ bd=d; b=r; } }); }catch(e){}
+ const o=b&&bd<=3?{dong:b[0],gu:b[1],la:b[2],lo:b[3]}:null; _bkZnAdmM.set(ck||nm,o); return o; }
+function bkZnGeo_(dong){ try{ const g=bkGeo_(dong); if(g&&g.la!=null) return g; }catch(e){} return null; }
+// 하차 → 다음 즉시콜 승차까지 (구·요일 종류·시각별) — 시간당 매출 학습 재료
+function bkZnWaits_(TR){ const L=TR.filter(t=>t&&t.start&&t.end).slice().sort((a,b)=>a.start-b.start), out=[];
+ for(let i=0;i+1<L.length;i++){ const a=L[i], b=L[i+1]; if(bkYmd_(a.end)!==bkYmd_(b.start)) continue; if(b.kind==='reserved'||b.bookId||b.kind==='imm') continue;
+  const g=(b.start-a.end)/60000; if(g<0||g>120) continue; const da=new Date(a.end);
+  out.push({gu:a.toGu||'',t:bkDowT_(bkYmd_(a.end)),m:da.getHours()*60+da.getMinutes(),g,fare:+b.fare||0,ride:Math.max(1,(b.end-b.start)/60000)}); }
+ return out; }
+function bkZnData_(){
+ const TR=(typeof bkTripsAll_==='function'?bkTripsAll_():(typeof allTrips==='function'?allTrips():[]))||[];
+ const HD=(typeof bkHistDec_==='function'?bkHistDec_():null);
+ const key=(bkSeenLog||[]).length+'|'+TR.length+'|'+(HD?HD.b:'')+'|'+(TR.length?TR[TR.length-1].start:0);
+ if(_bkZnD&&_bkZnD.key===key) return _bkZnD;
+ const R=[], I=[], seen=new Set(), rDays={wd:new Set(),sat:new Set(),sun:new Set()}, iDays={wd:new Set(),sat:new Set(),sun:new Set()};
+ const add=(arr,days,d,m,dong,gu,la,lo,addr,fare)=>{ if(!d||m==null||isNaN(m)||!dong) return; const A=bkZnAdm_(dong,la,lo); if(!A) return; const t=bkDowT_(d); arr.push({d,t,m,dong:A.dong,gu:A.gu,la:A.la,lo:A.lo,addr:addr||'',fare:+fare||0}); days[t].add(d); };
+ (bkSeenLog||[]).forEach(x=>{ if(!x||!x.d||!x.t) return; const p=(typeof bkPlaces==='object'&&bkPlaces&&x.fk)?bkPlaces[x.fk]:null;
+  const dong=bkZnNm_(p&&p.dong||x.from); const k=x.d+'|'+x.t+'|'+dong; if(seen.has(k)) return; seen.add(k);
+  add(R,rDays,x.d,(+x.t.slice(0,2))*60+(+x.t.slice(3,5)),dong,p&&p.gu,p&&p.la,p&&p.lo,x.fromAddr||(p&&p.lvl==='B'?p.nm:''),x.fare); });
+ try{ (HD?(HD.calls||[]).concat(HD.callsNG||[]):[]).forEach(c=>{ const dong=bkZnNm_(c.n); if(!dong||!c.d) return; const hh=Math.floor(c.m/60), mm=c.m%60;
+  const k=c.d+'|'+String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0')+'|'+dong; if(seen.has(k)) return; seen.add(k); add(R,rDays,c.d,c.m,dong,c.g,c.la,c.lo,'',c.fare); }); }catch(e){}
+ TR.forEach(t=>{ if(!t||!t.start||t.kind==='reserved'||t.bookId||t.kind==='imm') return; const dong=bkZnNm_(t.from); if(!dong) return; const d=new Date(t.start);
+  add(I,iDays,bkYmd_(t.start),d.getHours()*60+d.getMinutes(),dong,t.fromGu,t.fla,t.flo,t.fromAddr,t.fare); });
+ _bkZnD={key,R,I,rDays,iDays,W:bkZnWaits_(TR),at:Date.now()}; return _bkZnD;
+}
+// 구의 즉시콜 시간당 매출(그 요일 종류·시각 앞뒤 90분) — 표본 적으면 전체로 당김
+function bkZnRph_(D,gu,t,m){ const near=e=>Math.min(Math.abs(e.m-m),1440-Math.abs(e.m-m))<=90, w=e=>e.t===t?1:(t!=='wd'&&e.t!=='wd')?0.5:0.25;
+ let F=0,M=0,n=0,FA=0,MA=0,nA=0; D.W.forEach(e=>{ if(!near(e)) return; const x=w(e); FA+=x*e.fare; MA+=x*(e.g+e.ride); nA+=x; if(e.gu===gu){ F+=x*e.fare; M+=x*(e.g+e.ride); n+=x; } });
+ const all=MA>0?FA/MA*60:30000, own=M>0?F/M*60:all; return {rph:Math.round((n*own+BK_ZN.kG*all)/(n+BK_ZN.kG)),n:Math.round(n),all:Math.round(all)}; }
+function bkZoneRec_(la,lo,ms,opt){ opt=opt||{};
+ if(la==null||lo==null) return null; const D=bkZnData_(); if(!D.R.length&&!D.I.length) return null;
+ const d=bkYmd_(ms), t=bkDowT_(d), dt=new Date(ms), m=dt.getHours()*60+dt.getMinutes(), W=BK_ZN.win;
+ const ck=[D.key,t,Math.floor(m/10),Math.round(la*200),Math.round(lo*200),opt.limitMin||''].join('|'); if(_bkZnR&&_bkZnR.ck===ck) return _bkZnR.v;
+ const inWin=e=>Math.min(Math.abs(e.m-m),1440-Math.abs(e.m-m))<=W, wOf=e=>e.t===t?1:(t!=='wd'&&e.t!=='wd')?0.5:0.15;
+ const dayW=days=>['wd','sat','sun'].reduce((s,k)=>s+days[k].size*(k===t?1:(t!=='wd'&&k!=='wd')?0.5:0.15),0)||1;
+ const NR=dayW(D.rDays), NI=dayW(D.iDays), cell={}, GU={};
+ const put=(e,isI)=>{ const w=wOf(e), c=cell[e.dong]||(cell[e.dong]={dong:e.dong,gu:e.gu,la:e.la,lo:e.lo,r:0,i:0,n:0,addr:{},fs:0,fn:0});
+  if(!c.gu&&e.gu) c.gu=e.gu; if(c.la==null&&e.la!=null){ c.la=e.la; c.lo=e.lo; }
+  if(isI) c.i+=w; else c.r+=w; c.n+=w; if(e.addr) c.addr[e.addr]=(c.addr[e.addr]||0)+w; if(e.fare>0){ c.fs+=w*e.fare; c.fn+=w; } };
+ D.R.forEach(e=>{ if(inWin(e)) put(e,false); }); D.I.forEach(e=>{ if(inWin(e)) put(e,true); });
+ const GC=bkZnGuCnt_();
+ Object.values(cell).forEach(c=>{ if(c.la==null||!c.gu){ const g=bkZnGeo_(c.dong); if(g){ if(c.la==null){ c.la=g.la; c.lo=g.lo; } if(!c.gu) c.gu=g.g||''; } }
+  c.e=c.r/NR+BK_ZN.wIns*c.i/NI; const G=GU[c.gu]||(GU[c.gu]={e:0}); G.e+=c.e; });
+ Object.keys(GU).forEach(g=>{ GU[g].mean=GU[g].e/Math.max(1,GC[g]||1); });
+ // 지금 있는 동(가장 가까운 동 중심)
+ let here=null, hd=1e9; try{ bkZnDongs_().forEach(r=>{ const x=dist(la,lo,r[2],r[3]); if(x<hd){ hd=x; here={dong:r[0],gu:r[1],la:r[2],lo:r[3]}; } }); }catch(e){}
+ const C=Object.values(cell).filter(c=>c.la!=null&&dist(la,lo,c.la,c.lo)<=(opt.rad||BK_ZN.rad));
+ if(here&&!C.some(c=>c.dong===here.dong)){ const c0=cell[here.dong]||{dong:here.dong,gu:here.gu,la:here.la,lo:here.lo,r:0,i:0,n:0,addr:{},e:0,fs:0,fn:0}; C.push(c0); }
+ if(!C.length) return null;
+ C.forEach(c=>{ const gm=(GU[c.gu]&&GU[c.gu].mean)||0; c.es=(c.n*c.e+BK_ZN.k*gm)/(c.n+BK_ZN.k); });
+ const es=C.map(c=>c.es).filter(x=>x>0), ref=es.length?es.reduce((a,x)=>a+x*x,0)/es.reduce((a,x)=>a+x,0):1;   // 기준 = 콜이 실제로 나는 곳의 평균 수요(수요 가중 평균)
+ C.forEach(c=>{ const R=bkZnRph_(D,c.gu,t,m); c.rph=R.rph; c.rn=R.n; c.rel=ref>0?Math.max(BK_ZN.lo,Math.min(BK_ZN.hi,Math.pow(Math.max(c.es,1e-6)/ref,BK_ZN.alpha))):1;
+  c.Vz=Math.round(c.rph*c.rel); c.km=dist(la,lo,c.la,c.lo); c.move=Math.round(c.km*1.3/BK_ZN.spd*60);
+  // 11.10: 가치표(내 운행 궤적으로 학습한 '그 칸에서 앞으로 60분 벌 돈', 디디의 V(장소,시각))와 기하평균 — JK 자료 120건 검증에서 둘 합친 쪽이 더 잘 맞음
+  try{ const vt=typeof bkValH_==='function'?bkValH_({la:c.la,lo:c.lo},ms+c.move*60000,60):null; c.vt=vt&&vt.v>0?Math.round(vt.v):null; }catch(e){ c.vt=null; }
+  c.V=c.vt?Math.round(Math.sqrt(Math.max(1,c.Vz)*c.vt)):c.Vz; c.Vr=c.V;   // Vr = 서버 보정 전 값(채점·보정은 이 값으로)
+  try{ const zc=bkModel&&bkModel.zc&&bkModel.zc[c.gu]; if(zc>0) c.V=Math.round(c.V*Math.max(0.7,Math.min(1.3,zc))); c.zc=zc||null; }catch(e){}   // ☁️ 서버가 이동 추천 성적으로 보정
+  c.net=Math.round(c.V*Math.max(0,60-0.5*c.move)/60); c.top=Object.keys(c.addr).sort((a,b)=>c.addr[b]-c.addr[a])[0]||''; c.isHere=!!(here&&c.dong===here.dong); });
+ let L=C.filter(c=>c.n>0||c.isHere); if(opt.limitMin!=null) L=L.filter(c=>c.move<=opt.limitMin||c.isHere);
+ L.sort((a,b)=>b.net-a.net);
+ const v={t,m,d,NR:Math.round(NR),NI:Math.round(NI),top:L.slice(0,3),here:C.find(c=>c.isHere)||null,nR:D.R.length,nI:D.I.length,nW:D.W.length};
+ _bkZnR={ck,v}; return v; }
+// 다음 수락 예약 + 즉시콜 마감 시각 (안전 창 = 내 즉시콜 운행 상위 10% + 복귀 25분 + 선도착 10분, 여기에 콜 받고 손님까지 가는 시간)
+function bkPickMin_(){ try{ const a=[]; (typeof allTrips==='function'?allTrips():[]).forEach(t=>{ const p=t&&t.dead&&t.dead.pickMin; if(p!=null&&p>0&&p<40) a.push(p); }); if(a.length>=10){ a.sort((x,y)=>x-y); return Math.round(a[Math.floor(a.length/2)]); } }catch(e){} return 8; }
+function bkInstDeadline_(nowMs){ try{ const nx=(books||[]).filter(b=>b&&!b.cand).map(b=>{ try{ return bkNode_(b); }catch(e){ return null; } }).filter(n=>n&&n._s>nowMs).sort((a,b)=>a._s-b._s)[0];
+  if(!nx) return null; const safe=bkImmSafe_(), pick=bkPickMin_(), dl=nx._s-(safe+pick)*60000; return {nx,dl,safe,pick,left:Math.round((dl-nowMs)/60000),to:Math.round((nx._s-nowMs)/60000)}; }catch(e){ return null; } }
+// ── 채점: 추천을 남긴 뒤 다음 즉시콜(120분 안)의 대기·요금 → 추천 동(3곳) 근처에서 탔으면 '따름'
+function bkZnResolve_(nowMs){ nowMs=nowMs||Date.now(); const TR=(typeof allTrips==='function'?allTrips():[])||[]; let n=0;
+ bkZnLog.forEach(e=>{ if(e.out||nowMs-e.at<3*60000) return; const nx=TR.filter(t=>t&&t.start>e.at&&t.start-e.at<=120*60000).sort((a,b)=>a.start-b.start)[0];
+  if(nx&&(nx.kind==='reserved'||nx.bookId||nx.kind==='imm')){ e.out={res:1}; n++; return; }
+  if(nx&&nx.end){ const A=bkZnAdm_(nx.from,nx.fla,nx.flo), dg=A?A.dong:bkZnNm_(nx.from), near=(e.top||[]).some(x=>x.dong===dg||(x.la!=null&&nx.fla!=null&&dist(x.la,x.lo,nx.fla,nx.flo)<=1.5));
+   const wait=Math.round((nx.start-e.at)/60000), ride=Math.max(1,Math.round((nx.end-nx.start)/60000));
+   e.out={wait,ride,fare:+nx.fare||0,dong:dg,f:near?1:0}; n++; return; }
+  if(nowMs-e.at>120*60000){ e.out={none:1}; n++; } });
+ if(n){ try{ Store.set(KEY_ZNLOG,bkZnLog); }catch(e){} } return n; }
+function bkZnStats_(){ const S={f:{n:0,w:0,m:0,fare:0,pv:0},o:{n:0,w:0,m:0,fare:0},none:0};
+ bkZnLog.forEach(e=>{ const o=e.out; if(!o||o.res) return; if(o.none){ S.none++; return; } const g=o.f?S.f:S.o; g.n++; g.w+=o.wait; g.m+=o.wait+o.ride; g.fare+=o.fare; if(o.f&&e.top&&e.top[0]) S.f.pv+=e.top[0].V*(o.wait+o.ride)/60; });
+ const rph=g=>g.m>0?Math.round(g.fare/g.m*60):null; return {...S,fr:rph(S.f),or:rph(S.o),cal:S.f.pv>0?Math.round(S.f.fare/S.f.pv*100)/100:null}; }
+function bkZnMsg_(Z,DL,h){ const m=v=>Math.round(v/1000)/10+'만'; const a=Z&&Z.top[0];
+ let s=`${h}시 안내. `;
+ if(DL&&DL.left<=0) s+=`다음 예약 ${bkHM_(DL.nx._s)} ${bkZnNm_(DL.nx.from)} 출발까지 ${DL.to}분. 즉시콜은 받지 말고 콜 멈춤 후 출발지로 이동하세요.`;
+ else{ if(a) s+=a.isHere?`지금 자리 ${a.dong}이 가장 좋습니다. 시간당 약 ${m(a.V)}.`:`${a.dong}으로 이동 추천. ${a.move}분 거리, 시간당 약 ${m(a.V)}.`;
+  if(DL) s+=` 다음 예약 ${bkHM_(DL.nx._s)}. 즉시콜은 ${bkHM_(DL.dl)}까지만 받으세요.`; }
+ return s; }
+function bkZnAnnounce_(why,nowMs,waited){ nowMs=nowMs||Date.now();
+ try{ if(typeof occupied!=='undefined'&&occupied) return null; if(typeof pos==='undefined'||!pos) return null;
+  const DL=bkInstDeadline_(nowMs), Z=bkZoneRec_(pos.la,pos.lo,nowMs,DL&&DL.left>0?{limitMin:Math.max(10,Math.round(DL.left/2))}:{}); if(!Z&&!DL) return null;
+  const h=new Date(nowMs).getHours(); let msg=bkZnMsg_(Z,DL,h); if(why==='idle'){ msg=msg.replace(`${h}시 안내. `,`하차 후 ${waited}분째 콜이 없습니다. `); if(Z&&Z.top[0]&&Z.top[0].isHere) msg=msg.replace('가장 좋습니다.','가장 좋습니다. 조금 더 기다리세요.'); }
+  bkZnLog.push({at:nowMs,why,la:Math.round(pos.la*1e5)/1e5,lo:Math.round(pos.lo*1e5)/1e5,here:Z&&Z.here?Z.here.dong:'',t:Z?Z.t:'',top:Z?Z.top.map(c=>({dong:c.dong,gu:c.gu,la:Math.round(c.la*1e4)/1e4,lo:Math.round(c.lo*1e4)/1e4,V:c.V,Vr:c.Vr,move:c.move})):[],hereV:Z&&Z.here?Z.here.Vr:null,dl:DL?DL.dl:null});
+  try{ Store.set(KEY_ZNLOG,bkZnLog); }catch(e){}
+  if(planCfg.znVoice!==0||why==='tap'){ try{ if(window.speechSynthesis&&window.SpeechSynthesisUtterance){ const u=new SpeechSynthesisUtterance(msg); u.lang='ko-KR'; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } }catch(e){} }
+  try{ if(window.Notification&&Notification.permission==='granted') new Notification('공차 · 지금 갈 곳',{body:msg,tag:'gongcha-zn'}); }catch(e){}
+  try{ navigator.vibrate&&navigator.vibrate([150,80,150]); }catch(e){}
+  const tt=document.getElementById('bk_toast'); if(tt){ tt.textContent='🧭 '+msg; tt.hidden=false; clearTimeout(tt._tm); tt._tm=setTimeout(()=>{tt.hidden=true;},60000); }
+  try{ bkZnDraw_(); }catch(e){} return msg; }catch(e){ return null; } }
+// 하차 뒤 기다림이 그 구·시간대의 보통 대기(중앙값, 8~20분)를 넘으면 다시 계산해 이동 안내 (디디: 빈차 5~10분 넘으면 가치가 가장 큰 이웃 칸으로)
+function bkZnIdleT_(gu,ms){ try{ const D=bkZnData_(), m=new Date(ms).getHours()*60+new Date(ms).getMinutes(), t=bkDowT_(bkYmd_(ms));
+  const g=D.W.filter(e=>e.gu===gu&&Math.min(Math.abs(e.m-m),1440-Math.abs(e.m-m))<=120).map(e=>e.g).sort((a,b)=>a-b);
+  const all=D.W.map(e=>e.g).sort((a,b)=>a-b), med=g.length>=8?g[g.length>>1]:all.length?all[all.length>>1]:12; return Math.max(8,Math.min(20,Math.round(med))); }catch(e){ return 12; } }
+let _bkZnIdle={};
+function bkZnIdleTick_(nowMs){ if(typeof occupied!=='undefined'&&occupied) return null; if(typeof pos==='undefined'||!pos) return null;
+ let ld=(typeof lastDrop!=='undefined'&&lastDrop)?lastDrop:null; if(!ld){ try{ const T=allTrips().filter(t=>t&&t.end&&t.end<=nowMs); ld=T.length?Math.max(...T.map(t=>t.end)):null; }catch(e){} }
+ if(!ld||nowMs-ld>3*3600000) return null; const H=new Date(nowMs).getHours(); if(H<BK_ZN.h0||H>BK_ZN.h1) return null;
+ let gu=''; try{ const a=bkZnAdm_('',pos.la,pos.lo); gu=a?a.gu:''; }catch(e){}
+ const T0=bkZnIdleT_(gu,ld), waited=Math.round((nowMs-ld)/60000); if(waited<T0||_bkZnIdle[ld]) return null; _bkZnIdle[ld]=1;
+ _bkZnR=null; return bkZnAnnounce_('idle',nowMs,waited); }
+function bkZnTick_(nowMs){ nowMs=nowMs||Date.now(); try{ bkZnResolve_(nowMs); }catch(e){} try{ const r=bkZnIdleTick_(nowMs); if(r) return r; }catch(e){}
+ const d=new Date(nowMs), h=d.getHours(), k=bkYmd_(nowMs)+'@'+h; if(d.getMinutes()>2||_bkZnDone[k]) return null;
+ if(h<BK_ZN.h0||h>BK_ZN.h1) return null; _bkZnDone[k]=1;
+ try{ if(typeof bkModelFetch_==='function'&&!(typeof occupied!=='undefined'&&occupied)) bkModelFetch_().then(ch=>{ if(ch){ _bkZnD=null; _bkZnR=null; } }).catch(()=>{}); }catch(e){}   // 서버 학습 결과 받아오기
+ _bkZnD=null; _bkZnR=null;   // 매시간 다시 학습(새 사진·운행 반영)
+ return bkZnAnnounce_('hour',nowMs); }
+function bkZnInit_(){ if(_bkZnLoaded) return; _bkZnLoaded=true;
+ try{ Store.get(KEY_ZNLOG).then(v=>{ if(Array.isArray(v)){ const at=new Set(bkZnLog.map(e=>e.at)); bkZnLog=v.filter(e=>!at.has(e.at)).concat(bkZnLog); } }).catch(()=>{}); }catch(e){}
+ if(!window._bkZnIv) window._bkZnIv=setInterval(()=>{ try{ bkZnTick_(); }catch(e){} },60000); }
+function bkZnDraw_(){ const box=document.getElementById('znbox'), sec=document.getElementById('znsec'); if(!box||!sec) return;
+ if(typeof pos==='undefined'||!pos||(typeof occupied!=='undefined'&&occupied)){ sec.hidden=true; return; }
+ const now=Date.now(), DL=bkInstDeadline_(now), Z=bkZoneRec_(pos.la,pos.lo,now,DL&&DL.left>0?{limitMin:Math.max(10,Math.round(DL.left/2))}:{});
+ if(!Z&&!DL){ sec.hidden=true; return; } sec.hidden=false;
+ const m=v=>Math.round(v/1000)/10+'만', hh=new Date(now).getHours(), e=s=>(typeof bkEsc_==='function'?bkEsc_(s):String(s));
+ let h=`<div class="pup">`;
+ if(Z){ h+=`<div><b>${BK_DOW_NM[Z.t]} ${hh}시 앞뒤 1시간</b> 기준 · 예약콜 ${fmt(Z.nR)}건·즉시 승차 ${fmt(Z.nI)}건으로 학습 (동 표본이 적으면 구 평균으로 보정)</div>`;
+  Z.top.forEach((c,i)=>{ h+=`<div style="margin-top:6px">${i+1}. <b>${e(c.dong)}</b> ${e(c.gu||'')} — ${c.isHere?'지금 자리':'이동 '+c.move+'분'} · 시간당 약 <b>${m(c.V)}</b>`+
+    `<br><span style="color:var(--dim)">근거: 예약콜 ${Math.round(c.r*10)/10}건·즉시 승차 ${Math.round(c.i*10)/10}건(가중) · ${e(c.gu||'')} 즉시콜 표본 ${c.rn}회 · 수요 배율 ×${Math.round(c.rel*100)/100}${c.vt?` · 가치표 60분 ${m(c.vt)}`:''}${c.zc?` · 서버 보정 ×${Math.round(c.zc*100)/100}`:''}${c.top?` · 자주 나온 곳: ${e(c.top)}`:''}</span></div>`; });
+  if(Z.here&&!Z.top.some(c=>c.isHere)) h+=`<div style="margin-top:6px;color:var(--dim)">지금 자리 ${e(Z.here.dong)}: 시간당 약 ${m(Z.here.V||0)}</div>`; }
+ if(DL) h+=`<div style="margin-top:6px">${DL.left>0?`⏱️ 즉시콜 마감 <b>${bkHM_(DL.dl)}</b> (${DL.left}분 남음)`:`⛔ 즉시콜 마감 지남 — <b>콜 멈춤</b> 켜고 출발지로`} · 다음 예약 ${bkHM_(DL.nx._s)} ${e(bkZnNm_(DL.nx.from))}<br><span style="color:var(--dim)">마감 = 예약 시각 − (즉시콜 운행 상위 10% + 복귀 25분 + 선도착 10분 = ${DL.safe}분) − 손님까지 가는 시간 ${DL.pick}분</span></div>`;
+ const S=bkZnStats_(); if(S.f.n+S.o.n) h+=`<div style="margin-top:6px">📒 이동 추천 성적: 따른 ${S.f.n}회 평균 대기 ${S.f.n?Math.round(S.f.w/S.f.n):'-'}분·시간당 ${S.fr?m(S.fr):'-'} / 안 따른 ${S.o.n}회 ${S.o.n?Math.round(S.o.w/S.o.n):'-'}분·${S.or?m(S.or):'-'}${S.cal?` · 예측 대비 실제 ×${S.cal}`:''}${S.none?` · 2시간 콜 없음 ${S.none}회`:''}</div>`;
+ h+=`<div style="margin-top:6px"><button class="pacc" id="zn_voice">${planCfg.znVoice===0?'🔇 매시간 음성 안내 꺼짐':'🔊 매시간 음성 안내 켜짐'}</button> <button class="pacc" id="zn_now">지금 안내 듣기</button></div></div>`;
+ box.innerHTML=h;
+ const vb=document.getElementById('zn_voice'); if(vb) vb.onclick=()=>{ planCfg.znVoice=planCfg.znVoice===0?1:0; try{ Store.set(KEY_PLANCFG,planCfg); }catch(e){} bkZnDraw_(); };
+ const nb=document.getElementById('zn_now'); if(nb) nb.onclick=()=>{ bkZnAnnounce_('tap'); };
+}
+
+// ══ 🎯 콜 카드 목적지 판정 (JK 11.09) ══
+//  콜 카드에는 구·동 없이 빌딩·아파트 이름만 나온다 → 이름을 말하거나 치면 위치를 찾아 '받아도 됨/위험'을 바로 말한다
+//  위치 찾기 순서: ① 내가 쓴 적 있는 이름(이전 판정) ② 예약콜 사진에서 배운 건물(bkPlaces) ③ 내 운행의 승·하차 건물
+//               ④ TMAP 장소 검색(키가 있을 때, 현재 위치에서 가까운 것) → 찾은 위치는 기억해 다음부터 바로
+//  판정: 지금 + 손님까지(내 기록 중앙값) + 목적지까지 + 목적지→다음 예약 출발지 + 선도착 10분 ≤ 예약 시각 이면 '받아도 됨'
+//        이동 시간은 TMAP 실시간(2.5초 안에 오면) 아니면 직선거리×1.35÷시속 20km, 그리고 막힘 여유 ×1.2
+const KEY_DESTC='gongcha:destc', KEY_DESTLOG='gongcha:destlog'; let bkDestC={}, bkDestLog=[], _bkDestI=null;
+const bkDNorm_=s=>String(s||'').replace(/^(서울특별시|서울|경기도|경기|인천광역시|인천)\s*/,'').replace(/[\s()\[\]·.,\-]/g,'').toLowerCase();
+function bkDestIdx_(){
+ const TR=(typeof allTrips==='function'?allTrips():[])||[], key=Object.keys(bkPlaces||{}).length+'|'+TR.length+'|'+Object.keys(bkDestC).length;
+ if(_bkDestI&&_bkDestI.key===key) return _bkDestI;
+ const M=new Map(), put=(nm,la,lo,w,src)=>{ const k=bkDNorm_(nm); if(!k||k.length<2||la==null||lo==null||isNaN(la)) return; const o=M.get(k); if(!o||w>o.w) M.set(k,{nm,la:+la,lo:+lo,w,src}); };
+ Object.values(bkDestC).forEach(x=>put(x.nm,x.la,x.lo,1e6,'기억'));
+ Object.values(bkPlaces||{}).forEach(p=>{ if(p&&p.la!=null) put(p.nm,p.la,p.lo,(p.n||0)+(p.m||0)+(p.lvl==='B'?5:0),'예약콜'); });
+ TR.forEach(t=>{ if(!t) return; if(t.tla!=null){ put(t.toBldg,t.tla,t.tlo,3,'운행'); put(t.toAddr,t.tla,t.tlo,2,'운행'); } if(t.fla!=null){ put(t.fromBldg,t.fla,t.flo,3,'운행'); put(t.fromAddr,t.fla,t.flo,2,'운행'); } });
+ _bkDestI={key,M}; return _bkDestI; }
+function bkDestFind_(q){ const k=bkDNorm_(q); if(!k||k.length<2) return null; const M=bkDestIdx_().M;
+ if(M.has(k)) return M.get(k);
+ let best=null, bs=-1; M.forEach((v,key)=>{ if(key.length<2) return; const hit=key.includes(k)?k.length/key.length:k.includes(key)?key.length/k.length:0; if(hit<0.5) return; const s=hit*10+Math.log(1+v.w); if(s>bs){ bs=s; best=v; } });
+ return best; }
+async function bkDestTime_(a,b){ const est=Math.round(dist(a.la,a.lo,b.la,b.lo)*1.35/20*60)+3;
+ if(typeof apiKey==='undefined'||!apiKey) return {m:est,src:'직선'};
+ try{ const m=await Promise.race([fetchEta(a,b),new Promise((_,rej)=>setTimeout(()=>rej(0),2500))]); if(m>0) return {m:Math.round(m),src:'TMAP'}; }catch(e){}
+ return {m:est,src:'직선'}; }
+async function bkDestCheck_(q,nowMs){ nowMs=nowMs||Date.now(); q=String(q||'').trim(); if(!q) return null;
+ const here=(typeof pos!=='undefined'&&pos)?{la:pos.la,lo:pos.lo}:null;
+ let L=bkDestFind_(q), how=L?L.src:'';
+ if(!L&&typeof poiSearch==='function'){ try{ const ps=await Promise.race([poiSearch(q),new Promise(r=>setTimeout(()=>r([]),3000))]);
+   const c=(ps||[]).map(p=>({...p,d:here?dist(here.la,here.lo,p.la,p.lo):0})).filter(p=>p.d<80).sort((x,y)=>x.d-y.d)[0];
+   if(c){ L={nm:c.n||q,la:c.la,lo:c.lo}; how='TMAP 검색'; bkDestC[bkDNorm_(q)]={nm:q,la:c.la,lo:c.lo,at:nowMs}; try{ Store.set(KEY_DESTC,bkDestC); }catch(e){} } }catch(e){} }
+ if(!L){ const r={q,ok:null,msg:`${q}: 위치를 찾지 못했습니다. 목적지 근처 동 이름이나 큰 건물 이름으로 다시 말해 주세요.`}; bkDestLog.push({at:nowMs,q,ok:null}); return r; }
+ const DL=bkInstDeadline_(nowMs), pick=bkPickMin_(), A=await (here?bkDestTime_(here,L):Promise.resolve({m:0,src:'-'}));
+ let Z=null; try{ Z=bkZoneRec_(L.la,L.lo,nowMs+(pick+A.m)*60000,{rad:3}); }catch(e){}
+ const after=Z&&Z.here?` 도착지 다음 콜 시간당 약 ${Math.round((Z.here.V||0)/1000)/10}만.`:'';
+ let r;
+ if(!DL){ const arr=nowMs+(pick+A.m)*60000; r={q,ok:true,loc:L,how,ride:A,arr,msg:`${L.nm}: 받아도 됩니다. 다음 예약 없음. 하차 약 ${bkHM_(arr)}.${after}`}; }
+ else{ const B=await bkDestTime_(L,DL.nx._f||L), ride=Math.round(A.m*1.2), ret=Math.round(B.m*1.2), arr=nowMs+(pick+ride)*60000, need=arr+(ret+BK_LEAD)*60000, mg=Math.round((DL.nx._s-need)/60000);
+  r={q,ok:mg>=0,loc:L,how,ride:A,ret:B,arr,mg,msg:mg>=0?`${L.nm}: 받아도 됩니다. 하차 약 ${bkHM_(arr)}, 다음 예약 ${bkHM_(DL.nx._s)} 출발지까지 ${ret}분, 여유 ${mg}분.${after}`
+     :`${L.nm}: 위험합니다. 받지 마세요. 하차 약 ${bkHM_(arr)}이면 다음 예약 ${bkHM_(DL.nx._s)}에 ${-mg}분 늦습니다.`}; }
+ bkDestLog.push({at:nowMs,q,ok:r.ok,la:L.la,lo:L.lo,mg:r.mg==null?null:r.mg}); if(bkDestLog.length%5===0){ try{ Store.set(KEY_DESTLOG,bkDestLog); }catch(e){} }
+ return r; }
+function bkDestSay_(r){ if(!r) return; try{ if(window.speechSynthesis&&window.SpeechSynthesisUtterance){ const u=new SpeechSynthesisUtterance(r.msg); u.lang='ko-KR'; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } }catch(e){}
+ try{ navigator.vibrate&&navigator.vibrate(r.ok===false?[400,120,400]:[120]); }catch(e){}
+ const o=document.getElementById('dst_res'); if(o){ o.textContent=(r.ok===true?'✅ ':r.ok===false?'⛔ ':'❓ ')+r.msg+(r.how?` (위치: ${r.how}${r.ride?` · 이동 ${r.ride.src}`:''})`:''); o.style.color=r.ok===true?'var(--occ)':r.ok===false?'var(--vac)':'var(--amber)'; } }
+function bkDestInit_(){ try{ Store.get(KEY_DESTC).then(v=>{ if(v&&typeof v==='object') bkDestC=Object.assign(v,bkDestC); }).catch(()=>{}); Store.get(KEY_DESTLOG).then(v=>{ if(Array.isArray(v)) bkDestLog=v.concat(bkDestLog); }).catch(()=>{}); }catch(e){}
+ const $=id=>document.getElementById(id), inp=$('dst_q'), go=$('dst_go'), mic=$('dst_mic'); if(!inp||!go) return;
+ const run=async()=>{ const o=$('dst_res'); if(o){ o.textContent='판정 중…'; o.style.color='var(--dim)'; } const r=await bkDestCheck_(inp.value); bkDestSay_(r); };
+ go.onclick=run; inp.onkeydown=e=>{ if(e.key==='Enter') run(); };
+ if(mic) mic.onclick=()=>{ const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR){ const o=$('dst_res'); if(o) o.textContent='이 브라우저는 음성 입력을 지원하지 않습니다 — 글자로 입력해 주세요'; return; }
+  const rc=new SR(); rc.lang='ko-KR'; rc.interimResults=false; rc.maxAlternatives=1; mic.textContent='🔴';
+  rc.onresult=e=>{ inp.value=e.results[0][0].transcript; run(); }; rc.onend=()=>{ mic.textContent='🎤'; }; rc.onerror=()=>{ mic.textContent='🎤'; }; try{ rc.start(); }catch(e){ mic.textContent='🎤'; } }; }
 
 function initPlan_(){
  const $=id=>document.getElementById(id);
@@ -6376,8 +6609,8 @@ function bkDtSave_(force){ const now=Date.now(); if(!force&&now-_bkDtSaveT<30000
   try{ bkDtPrune_(7); localStorage.setItem(KEY_DTRK+bkDayTrkD,JSON.stringify(bkDayTrk)); }catch(e2){} } }
 function bkDtDays_(){ const out=[]; try{ for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith(KEY_DTRK)) out.push(k.slice(KEY_DTRK.length)); } }catch(e){} return out.sort().reverse(); }
 function bkDtPrune_(keep){ const days=bkDtDays_(); days.slice(keep||14).forEach(d=>{ try{ localStorage.removeItem(KEY_DTRK+d); }catch(e){} }); }
-function bkDrivesLoad_(){ try{ const a=JSON.parse(localStorage.getItem(KEY_DRIVES)||'[]'); bkDrives=Array.isArray(a)?a:[]; }catch(e){ bkDrives=[]; } }
-function bkDrivesSave_(){ try{ localStorage.setItem(KEY_DRIVES,JSON.stringify(bkDrives.slice(-3000))); }catch(e){} }
+function bkDrivesLoad_(){ try{ const a=JSON.parse(localStorage.getItem(KEY_DRIVES)||'[]'); bkDrives=Array.isArray(a)?a:[]; }catch(e){ bkDrives=[]; } try{ IDB.get('all:drives').then(A=>{ if(Array.isArray(A)&&A.length>bkDrives.length){ const k=new Set(bkDrives.map(x=>x&&x.t0)); bkDrives.unshift(...A.filter(x=>x&&!k.has(x.t0))); } }).catch(()=>{}); }catch(e){} }   // 11.09: 전체는 IndexedDB
+function bkDrivesSave_(){ try{ IDB.put('all:drives',bkDrives); }catch(e){} try{ localStorage.setItem(KEY_DRIVES,JSON.stringify(bkDrives.slice(-3000))); }catch(e){} }
 function bkDtState_(){ try{ if(typeof restOn!=='undefined'&&restOn) return 3; if(typeof occupied!=='undefined'&&occupied) return 1; if(typeof bkMv!=='undefined'&&bkMv&&!bkMv.t1) return 2; }catch(e){} return 0; }
 // GPS 한 번마다
 function bkDayTrkTick_(){
@@ -8394,11 +8627,11 @@ async function commitDay(){
     fromBldg:x.fromBldg,fromRoad:x.fromRoad,fromJibun:x.fromJibun,fromFull:x.fromFull,
     toBldg:x.toBldg,toRoad:x.toRoad,toJibun:x.toJibun,toFull:x.toFull,
     tag:x.tag,kind:x.kind||'instant',bookId:x.bookId,bookPeak:x.bookPeak,bookFrom:x.bookFrom,bookTo:x.bookTo,bookFare:x.bookFare,autoArm:x.autoArm,kindSet:x.kindSet})));
-  if(tripArchive.length>60) tripArchive=tripArchive.slice(0,60);
+  // 11.09: 운행 보관 기간 제한 없음(IndexedDB)
   await Store.set(KEY_ARCH,tripArchive);}
  history=history.filter(h=>h.date!==t.date); history.push(t);
  history.sort((a,b)=>a.date<b.date?1:-1);
- if(history.length>400) history=history.slice(0,400);
+ // 11.09: 일별 요약 제한 없음
  await Store.set(KEY_HIST,history);
 }
 function bucket(rows,mode){
@@ -9116,7 +9349,9 @@ async function cloudPayload(date){
    bizdate:date, exported:new Date().toISOString(), data:(()=>{ try{ const trk=bkTlCloud_(date); const dr=(bkDrives||[]).filter(x=>bkYmd_(x.t0)===date); const calls=(bkSeenLog||[]).filter(x=>bkYmd_(x.seen)===date).map(x=>({seen:x.seen,last:x.last,d:x.d,t:x.t,fare:x.fare,peak:x.peak||null,from:x.from,to:x.to,fromAddr:x.fromAddr||null,toAddr:x.toAddr||null,fk:x.fk||null,tk:x.tk||null,ride:x.ride,n:x.n,mine:x.mine||null,...bkCloudGeo_(x)})); return (trk||dr.length||calls.length)?Object.assign({},snap,{trk,drives:dr,calls}):snap; }catch(e){ return snap; } })(),
    tt:(()=>{ try{ return bkTTSamples_(snap.trips||[]); }catch(e){ return []; } })(),
    pk:(()=>{ try{ return bkPkCloud_(date,snap.trips||[]); }catch(e){ return []; } })(),
-   rec:(()=>{ try{ return bkRecLog.filter(x=>x.d===date&&x.out); }catch(e){ return []; } })()});   // 📒 추천 성적(서버 v5 학습용)
+   rec:(()=>{ try{ return bkRecLog.filter(x=>x.d===date&&x.out); }catch(e){ return []; } })(),
+   zn:(()=>{ try{ return bkZnLog.filter(x=>bkYmd_(x.at)===date&&x.out); }catch(e){ return []; } })(),   // 11.10: 🧭 이동 추천 성적 → 서버가 구별 보정
+   dst:(()=>{ try{ return bkDestLog.filter(x=>bkYmd_(x.at)===date); }catch(e){ return []; } })()});   // 📒 추천 성적(서버 v5 학습용)
 }
 async function cloudSendOne(date){
  const body=await cloudPayload(date);
@@ -10609,6 +10844,7 @@ document.getElementById('ok').onclick=async()=>{
  liveBackup();                                     // 하차·요금 확정도 백업에 반영
  try{ render(); }catch(e){}
  try{ const h=document.getElementById('hint'); if(h) h.textContent='빈차 · 저장됨 · 손님을 태우면 누르세요'; }catch(e){}
+ try{ setTimeout(()=>{ try{ _bkZnD=null; _bkZnR=null; bkZnAnnounce_('drop'); }catch(e){} },1500); }catch(e){}   // 🧭 하차 직후 갈 곳 안내
 };
 document.getElementById('skip').onclick=()=>{document.getElementById('dlg').close();render();};
 { const _imp=document.getElementById('imp'); if(_imp) _imp.onclick=()=>{
@@ -10672,7 +10908,7 @@ document.getElementById('skip').onclick=()=>{document.getElementById('dlg').clos
  try{ bkArchKindFix_(); }catch(e){}   // 지난 운행 보관본의 예약 연결 복구
  custs=(await Store.get(KEY_CUST))||{};
  try{ if(bkPruneCands_()) await Store.set(KEY_BOOK,books); }catch(e){}
- safe(initPlan_,'initPlan_'); safe(bkKindInit_,'bkKindInit_'); safe(bkKindDraw_,'bkKindDraw_'); safe(initBook,'initBook'); safe(initCam_,'initCam_'); safe(initCust,'initCust'); safe(initWake,'initWake');
+ safe(initPlan_,'initPlan_'); safe(bkZnInit_,'bkZnInit_'); safe(bkDestInit_,'bkDestInit_'); safe(bkKindInit_,'bkKindInit_'); safe(bkKindDraw_,'bkKindDraw_'); safe(initBook,'initBook'); safe(initCam_,'initCam_'); safe(initCust,'initCust'); safe(initWake,'initWake');
  try{ await initZone(); }catch(e){ console.warn('initZone 건너뜀',e.message); }
  shifts=(await Store.get(KEY_SHIFT))||[];
  try{ initShift(); }catch(e){ console.warn('initShift 건너뜀',e.message); }
